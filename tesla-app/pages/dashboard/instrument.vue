@@ -2,7 +2,7 @@
   <view class="instrument-page" :class="themeClass">
     <view class="cluster-screen" v-if="currentVehicle">
       <!-- 实时地图背景 -->
-      <view class="map-bg-container">
+      <view class="map-bg-container map-dark-filter">
         <map
           id="dashboardMap"
           class="map-bg"
@@ -17,7 +17,9 @@
           :markers="mapMarkers"
           :enable-satellite="false"
           :enable-traffic="false"
+          :disable-scroll="true"
           :layer-style="mapLayerStyle"
+          @updated="onMapUpdated"
         ></map>
         <view class="map-overlay"></view>
       </view>
@@ -166,20 +168,16 @@ const vehicleLng = computed(() => vehicleData.value?.longitude || 116.4074)
 const vehicleHeading = computed(() => vehicleData.value?.heading || 0)
 
 const mapLayerStyle = computed(() => {
-  const isDark = themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro'
-  if (isDark) {
-    const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
-    // #ifdef APP-PLUS
-    return parseInt(styleId) || 2
-    // #endif
-    // #ifdef H5
-    return 'style' + styleId
-    // #endif
-    // #ifndef APP-PLUS || H5
-    return styleId
-    // #endif
-  }
-  return 1
+  const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+  // #ifdef APP-PLUS
+  return parseInt(styleId) || 2
+  // #endif
+  // #ifdef H5
+  return 'style' + styleId
+  // #endif
+  // #ifndef APP-PLUS || H5
+  return styleId
+  // #endif
 })
 
 const mapMarkers = computed(() => {
@@ -239,6 +237,21 @@ const formatTemp = (t) => {
   return `${t.toFixed(1)}°C`
 }
 
+const onMapUpdated = () => {
+  try {
+    const mapContext = uni.createMapContext('dashboardMap')
+    if (mapContext && mapContext.setMapStyle) {
+      const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+      // #ifdef APP-PLUS
+      mapContext.setMapStyle(parseInt(styleId) || 2)
+      // #endif
+      // #ifdef H5
+      mapContext.setMapStyle('style' + styleId)
+      // #endif
+    }
+  } catch (e) {}
+}
+
 onMounted(() => {
   try { uni.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
 
@@ -262,16 +275,13 @@ onMounted(() => {
     try {
       const mapContext = uni.createMapContext('dashboardMap')
       if (mapContext && mapContext.setMapStyle) {
-        const isDark = themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro'
-        if (isDark) {
-          const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
-          // #ifdef APP-PLUS
-          mapContext.setMapStyle(parseInt(styleId) || 2)
-          // #endif
-          // #ifdef H5
-          mapContext.setMapStyle('style' + styleId)
-          // #endif
-        }
+        const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+        // #ifdef APP-PLUS
+        mapContext.setMapStyle(parseInt(styleId) || 2)
+        // #endif
+        // #ifdef H5
+        mapContext.setMapStyle('style' + styleId)
+        // #endif
       }
     } catch (e) {}
   }, 500)
@@ -302,7 +312,7 @@ onUnmounted(() => {
   height: 100vh;
   overflow: hidden;
   position: relative;
-  padding-top: calc(var(--status-bar-height, 44px) + 88rpx);
+  padding-top: env(safe-area-inset-top);
   box-sizing: border-box;
 }
 
@@ -329,6 +339,11 @@ onUnmounted(() => {
 .map-bg {
   width: 100%;
   height: 100%;
+}
+
+.map-dark-filter .map-bg {
+  filter: invert(90%) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+  transition: filter 0.3s ease;
 }
 
 .map-overlay {
