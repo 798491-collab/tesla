@@ -1,0 +1,25 @@
+D:
+cd \wwwroot\chen.sdtyxb.com\tesla-server
+
+# 设置环境变量
+set GOSUMDB=off
+
+# 编译
+D:\BtSoft\go\go\bin\go.exe build -o tesla-server.exe cmd/main.go
+
+# 检查是否生成
+dir tesla-server.exe
+
+npm run dev:h5
+
+
+
+
+pkill -9 -f tesla-server
+
+ps aux | grep tesla
+go build -o tesla-server cmd/main.go
+grep -n "Failed to create TeslaVehicle" /www/wwwroot/tesla/internal/tesla/oauth.go
+
+./tesla-server
+go build -o batch_analyze ./cmd/batch_analyze/main.go

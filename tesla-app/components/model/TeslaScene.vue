@@ -1,0 +1,1428 @@
+<template>
+  <!-- #ifdef APP-PLUS || H5 -->
+  <view
+    :id="containerId"
+    style="width:100%;height:100%"
+    @click="tesla.onCanvasClick"
+    :stateData="state"
+    :change:stateData="tesla.onStateChange"
+    :darkModeVal="darkModeProp"
+    :change:darkModeVal="tesla.onDarkModeChange"
+    :licensePlateVal="licensePlate"
+    :change:licensePlateVal="tesla.onLicensePlateChange"
+    :containerIdProp="containerId"
+    :change:containerIdProp="tesla.onContainerIdChange"
+  ></view>
+  <!-- #endif -->
+  <!-- #ifndef APP-PLUS || H5 -->
+  <view style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+    <text style="color:#999;font-size:24rpx;">3D模型仅支持APP和H5</text>
+  </view>
+  <!-- #endif -->
+</template>
+
+<script>
+export default {
+  props: {
+    darkMode: { type: Boolean, default: true },
+    licensePlateFront: { type: String, default: '' },
+    licensePlateRear: { type: String, default: '' },
+    // renderjs 通信 props
+    state: { type: Object, default: null },
+    darkModeProp: { type: Boolean, default: true },
+    licensePlate: { type: Object, default: null },
+  },
+  data() {
+    return {
+      containerId: 'tesla-scene-' + Math.random().toString(36).slice(2, 8),
+      loading: true,
+      chargeProgress: 68,
+    }
+  },
+  methods: {
+    // renderjs 通过 ownerVm.callMethod 回调逻辑层
+    onDoorClick(doorKey) {
+      this.$emit('onDoorClick', doorKey)
+    },
+    onTrunkClick() {
+      this.$emit('onTrunkClick')
+    },
+    onSceneReady() {
+      this.loading = false
+      this.$emit('onSceneReady')
+    },
+    // 暴露给父组件的方法（兼容 ref 调用方式）
+    setDoor(key, value) { /* state 由父组件管理 */ },
+    toggleDoor(key) { /* state 由父组件管理 */ },
+    toggleTrunk() { /* state 由父组件管理 */ },
+    allDoorsOpen() { /* state 由父组件管理 */ },
+    allDoorsClose() { /* state 由父组件管理 */ },
+    setLight(key, value) { /* state 由父组件管理 */ },
+    toggleLight(key) { /* state 由父组件管理 */ },
+    setGear(g) { /* state 由父组件管理 */ },
+    setSpeed(v) { /* state 由父组件管理 */ },
+    setMirrorFolded(v) { /* state 由父组件管理 */ },
+    setCharging(v) { /* state 由父组件管理 */ },
+    setColor(key, color) { /* state 由父组件管理 */ },
+    setFogLight(on) { /* state 由父组件管理 */ },
+    setDarkMode(dark) { /* 由 prop 驱动 */ },
+    setLicensePlate(front, rear) { /* 由 prop 驱动 */ },
+    getLoading() { return this.loading },
+    getChargeProgress() { return this.chargeProgress },
+    getState() { return this.state },
+  }
+}
+</script>
+
+<script module="tesla" lang="renderjs">
+// Three.js 通过 IIFE bundle 加载，所有模块挂载在全局 THREE_BUNDLE 对象上
+// 在 mounted 中动态加载 static/three-bundle.js，加载完成后从 window.THREE_BUNDLE 获取模块
+
+let THREE, OrbitControls, GLTFLoader, DRACOLoader, EffectComposer, RenderPass, EffectPass, BloomEffect
+
+let _containerId = null
+
+let isAndroid = false
+let isLowEnd = false
+let qualityLevel = 'high'
+
+function detectPlatform() {
+  const ua = navigator.userAgent || ''
+  isAndroid = /Android/i.test(ua)
+  const isIOS = /iPhone|iPad|iPod/i.test(ua)
+  const isAppPlusEnv = typeof plus !== 'undefined' || !!window.__uniappplus || window.location.protocol === 'file:'
+  const canvas = document.createElement('canvas')
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+  let maxTextureSize = 2048
+  if (gl) {
+    maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048
+    const rendererInfo = gl.getExtension('WEBGL_debug_renderer_info')
+    if (rendererInfo) {
+      const gpuRenderer = gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL) || ''
+      if (/Mali-[TG4]|Adreno [345]\d{2}|PowerVR/i.test(gpuRenderer)) {
+        isLowEnd = true
+      }
+    }
+    const loseCtx = gl.getExtension('WEBGL_lose_context')
+    if (loseCtx) loseCtx.loseContext()
+  }
+  if (isAndroid) {
+    const mem = navigator.deviceMemory || (isLowEnd ? 2 : 4)
+    if (isLowEnd || mem <= 2 || maxTextureSize < 4096) {
+      qualityLevel = 'low'
+    } else {
+      qualityLevel = 'medium'
+    }
+  } else if (isIOS && isAppPlusEnv) {
+    qualityLevel = 'high'
+  } else if (isIOS || /Mobile/i.test(ua)) {
+    qualityLevel = 'medium'
+  } else {
+    qualityLevel = 'high'
+  }
+  console.log('[TeslaScene] Platform: isAndroid=' + isAndroid + ' isIOS=' + isIOS + ' isLowEnd=' + isLowEnd + ' qualityLevel=' + qualityLevel + ' maxTextureSize=' + maxTextureSize)
+  frameInterval = qualityLevel === 'low' ? 1000 / 30 : 1000 / 60
+}
+
+let scene, camera, renderer, controls, composer
+let useBloom = true
+let animId = 0
+let currentDarkMode = true
+let entryProgress = 0, entryDone = false
+let chargeTimer = 0
+let lastFrameTime = 0
+let frameInterval = 1000 / 60
+
+let doorNodes = {}
+let doorInitialQuats = {}
+let trunkNode = null
+let trunkInitialQuat = null
+const wheelPivots = []
+const mirrorNodes = []
+const lightMats = {}
+const leftSignalMats = []
+const rightSignalMats = []
+const leftTailMats = []
+const rightTailMats = []
+const leftHeadlightMats = []
+const rightHeadlightMats = []
+const frontFogMats = []
+const rearFogMats = []
+const colorMats = {}
+const glassMaterials = []
+
+let spotLightL, spotLightR
+let chargingParticles = null
+let chargeScreenRing = null
+let chargePortGlow = null
+let chargeTargetPos = null
+let displayNode = null
+let displayCenter = null
+let displaySize = null
+let routeLineFL, routeLineFR, routeLineRL, routeLineRR
+let frontPlateNode = null
+let rearPlateNode = null
+let rootNode = null
+let rootInitialPos = null
+let ambientLight, dirLight1, dirLight2, dirLight3
+
+let doorMeshes = []
+let trunkMeshes = []
+let raycaster = null
+let mouse = null
+
+// 从逻辑层获取的 state 引用
+let ownerState = null
+let ownerVm = null
+
+function setEmissive(materials, color, intensity) {
+  for (const m of materials) {
+    m.emissive.set(color)
+    m.emissiveIntensity = intensity
+  }
+}
+
+function createLicensePlateTexture(text) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 440
+  canvas.height = 140
+  const ctx = canvas.getContext('2d')
+  const gradient = ctx.createLinearGradient(0, 0, 0, 140)
+  gradient.addColorStop(0, '#ffffff')
+  gradient.addColorStop(0.3, '#a8e6cf')
+  gradient.addColorStop(1, '#00a651')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, 440, 140)
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 4
+  ctx.strokeRect(4, 4, 432, 132)
+  let formatted = (text || '沪ACF9908').toUpperCase()
+  if (formatted.length > 2 && !formatted.includes(' ')) {
+    formatted = formatted.slice(0, 2) + ' ' + formatted.slice(2)
+  }
+  ctx.fillStyle = '#000000'
+  ctx.font = 'bold 70px Arial'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(formatted, 220, 70)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.needsUpdate = true
+  return texture
+}
+
+function applyLicensePlate(node, text) {
+  node.traverse((c) => {
+    if (!(c instanceof THREE.Mesh)) return
+    const mats = Array.isArray(c.material) ? c.material : [c.material]
+    for (const mat of mats) {
+      const m = mat
+      if (m.isMeshStandardMaterial) {
+        m.map = createLicensePlateTexture(text)
+        m.color.set('#ffffff')
+        m.needsUpdate = true
+      }
+    }
+  })
+}
+
+function createRouteLine(spacing, isForward) {
+  const group = new THREE.Group()
+  const segLen = 0.8
+  const gapLen = 0.6
+  const totalSegs = 3
+  const width = 0.01
+  for (let i = 0; i < totalSegs; i++) {
+    const geo = new THREE.PlaneGeometry(width, segLen, 1, 4)
+    const colors = new Float32Array(5 * 2 * 3)
+    for (let r = 0; r < 5; r++) {
+      const t = r / 4
+      const brightness = 1.0 - t * 0.7
+      for (let j = 0; j < 2; j++) {
+        const idx = (r * 2 + j) * 3
+        colors[idx] = brightness
+        colors[idx + 1] = brightness
+        colors[idx + 2] = brightness
+      }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0,
+      depthWrite: false, side: THREE.DoubleSide,
+    })
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.rotation.x = -Math.PI / 2
+    mesh.userData.segIndex = i
+    const offset = 2.0 + i * (segLen + gapLen)
+    if (isForward) {
+      mesh.position.set(spacing, 0.005, offset + segLen / 2)
+    } else {
+      mesh.position.set(spacing, 0.005, -(offset + segLen / 2))
+    }
+    group.add(mesh)
+  }
+  return group
+}
+
+function initScene(container) {
+  console.log('[TeslaScene] initScene called')
+  console.log('[TeslaScene] container in initScene:', container.clientWidth, 'x', container.clientHeight)
+
+  // APP-PLUS: file:// 协议下 fetch 不可用，用 XHR 替代 fetch
+  const isAppPlus = typeof plus !== 'undefined' ||
+                    !!window.__uniappplus ||
+                    window.location.protocol === 'file:'
+  if (isAppPlus) {
+    console.log('[TeslaScene] APP-PLUS detected, patching window.fetch to use XHR')
+    const originalFetch = window.fetch
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url
+      console.log('[TeslaScene] fetch intercepted:', url)
+      return new Promise(function (resolve, reject) {
+        const xhr = new XMLHttpRequest()
+        xhr.open('GET', url, true)
+        // 根据 init 设置 responseType
+        let responseType = 'arraybuffer'
+        if (init && init.headers) {
+          // 如果请求 text 类型
+          const accept = init.headers['Accept'] || init.headers['accept'] || ''
+          if (accept.includes('text') || accept.includes('json') || accept.includes('xml')) {
+            responseType = 'text'
+          }
+        }
+        xhr.responseType = responseType
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            if (xhr.status === 200 || xhr.status === 0) {
+              console.log('[TeslaScene] fetch XHR success:', url, 'size:', xhr.response.byteLength || xhr.response.length)
+              resolve({
+                ok: true,
+                status: xhr.status,
+                arrayBuffer: function () { return Promise.resolve(xhr.response) },
+                text: function () { return Promise.resolve(typeof xhr.response === 'string' ? xhr.response : new TextDecoder().decode(xhr.response)) },
+                json: function () { return Promise.resolve(JSON.parse(typeof xhr.response === 'string' ? xhr.response : new TextDecoder().decode(xhr.response))) },
+                headers: { get: function () { return null } }
+              })
+            } else {
+              console.warn('[TeslaScene] fetch XHR status:', xhr.status, url)
+              reject(new Error('XHR status: ' + xhr.status))
+            }
+          }
+        }
+        xhr.onerror = function () {
+          console.warn('[TeslaScene] fetch XHR error:', url)
+          reject(new Error('XHR error'))
+        }
+        xhr.send()
+      })
+    }
+  }
+
+  // 初始化需要 THREE 的变量
+  trunkInitialQuat = new THREE.Quaternion()
+  chargeTargetPos = new THREE.Vector3()
+  displayCenter = new THREE.Vector3()
+  displaySize = new THREE.Vector3()
+  rootInitialPos = new THREE.Vector3()
+  raycaster = new THREE.Raycaster()
+  mouse = new THREE.Vector2()
+
+  scene = new THREE.Scene()
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100)
+  // 入场动画最终相机位置
+  camera.position.set(-0.83, 4.2, 3.33)
+
+  // WebGL 渲染器创建，添加错误处理
+  let glContext = null
+  try {
+    // 如果 container 是有效的 DOM 元素，直接使用；否则尝试通过 id 查找
+    if (container && typeof container.appendChild === 'function') {
+      glContext = container
+    } else if (container && container.id) {
+      glContext = document.getElementById(container.id)
+    }
+    console.log('[TeslaScene] WebGL context target:', glContext ? (glContext.id || 'no-id') : 'null')
+  } catch (e) {
+    console.error('[TeslaScene] Error getting container for WebGL:', e)
+  }
+
+  detectPlatform()
+
+  try {
+    renderer = new THREE.WebGLRenderer({
+      antialias: qualityLevel === 'high',
+      alpha: true,
+      powerPreference: 'high-performance',
+      failIfMajorPerformanceCaveat: false,
+      preserveDrawingBuffer: isAndroid,
+    })
+    console.log('[TeslaScene] renderer created successfully, quality=' + qualityLevel)
+  } catch (e) {
+    console.error('[TeslaScene] WebGLRenderer creation failed:', e)
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        alpha: true,
+        powerPreference: 'high-performance',
+        preserveDrawingBuffer: isAndroid,
+      })
+      console.log('[TeslaScene] renderer created with antialias=false fallback')
+    } catch (e2) {
+      console.error('[TeslaScene] WebGLRenderer creation failed even without antialias:', e2)
+      try {
+        renderer = new THREE.WebGLRenderer({ alpha: false, antialias: false, preserveDrawingBuffer: isAndroid })
+        console.log('[TeslaScene] renderer created with minimal config fallback')
+      } catch (e3) {
+        console.error('[TeslaScene] All WebGLRenderer creation attempts failed:', e3)
+        return
+      }
+    }
+  }
+
+  // 检查 WebGL 上下文是否真正可用
+  const gl = renderer.getContext()
+  if (!gl) {
+    console.error('[TeslaScene] WebGL context is null after renderer creation')
+    return
+  }
+  console.log('[TeslaScene] WebGL context obtained:', gl instanceof WebGLRenderingContext || gl instanceof WebGL2RenderingContext)
+
+  renderer.setSize(container.clientWidth, container.clientHeight)
+  const maxPixelRatio = qualityLevel === 'low' ? 1 : (qualityLevel === 'medium' ? 1.5 : 2)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio))
+  renderer.shadowMap.enabled = qualityLevel !== 'low'
+  renderer.shadowMap.type = qualityLevel === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap
+  renderer.toneMapping = qualityLevel === 'low' ? THREE.LinearToneMapping : THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.2
+  renderer.setClearColor(0x000000, 0)
+  container.appendChild(renderer.domElement)
+
+  renderer.domElement.addEventListener('webglcontextlost', function (e) {
+    e.preventDefault()
+    console.warn('[TeslaScene] WebGL context lost, attempting recovery')
+    cancelAnimationFrame(animId)
+  }, false)
+  renderer.domElement.addEventListener('webglcontextrestored', function () {
+    console.log('[TeslaScene] WebGL context restored, reinitializing')
+    if (scene && camera) {
+      composer.setSize(container.clientWidth, container.clientHeight)
+      lastFrameTime = 0
+      animate()
+    }
+  }, false)
+
+  if (qualityLevel === 'low') {
+    useBloom = false
+    composer = new EffectComposer(renderer, { depthBuffer: true, stencilBuffer: false, multisampling: 0 })
+    composer.addPass(new RenderPass(scene, camera))
+  } else if (qualityLevel === 'medium') {
+    useBloom = true
+    composer = new EffectComposer(renderer, { depthBuffer: true, stencilBuffer: false, multisampling: 0 })
+    composer.addPass(new RenderPass(scene, camera))
+    composer.addPass(new EffectPass(camera, new BloomEffect({
+      intensity: 0.3, luminanceThreshold: 0.9, luminanceSmoothing: 0.7, kernelSize: 3
+    })))
+  } else {
+    useBloom = true
+    composer = new EffectComposer(renderer, { depthBuffer: true, stencilBuffer: false, multisampling: 4 })
+    composer.addPass(new RenderPass(scene, camera))
+    composer.addPass(new EffectPass(camera, new BloomEffect({
+      intensity: 0.5, luminanceThreshold: 0.8, luminanceSmoothing: 0.9
+    })))
+  }
+
+  controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.05
+  controls.minDistance = 2
+  controls.maxDistance = 12
+  controls.minPolarAngle = 0.2
+  controls.maxPolarAngle = Math.PI / 2 - 0.1
+  controls.target.set(0, 0.2, 0)
+
+  ambientLight = new THREE.AmbientLight('#b0c4de', 0.3)
+  scene.add(ambientLight)
+  dirLight1 = new THREE.DirectionalLight('#ffffff', 1.5)
+  dirLight1.position.set(5, 8, 5)
+  dirLight1.castShadow = qualityLevel !== 'low'
+  const shadowMapSize = qualityLevel === 'high' ? 2048 : (qualityLevel === 'medium' ? 1024 : 512)
+  dirLight1.shadow.mapSize.set(shadowMapSize, shadowMapSize)
+  dirLight1.shadow.camera.near = 0.5
+  dirLight1.shadow.camera.far = 30
+  dirLight1.shadow.camera.left = -8
+  dirLight1.shadow.camera.right = 8
+  dirLight1.shadow.camera.top = 8
+  dirLight1.shadow.camera.bottom = -8
+  dirLight1.shadow.bias = -0.001
+  scene.add(dirLight1)
+  dirLight2 = new THREE.DirectionalLight('#4466aa', 0.6)
+  dirLight2.position.set(-5, 3, -5)
+  scene.add(dirLight2)
+  dirLight3 = new THREE.DirectionalLight('#6644aa', 0.4)
+  dirLight3.position.set(0, 5, -8)
+  scene.add(dirLight3)
+
+  if (qualityLevel !== 'low') {
+    spotLightL = new THREE.SpotLight('#ffffff', 0, 30, 0.14, 0.5, 0.8)
+    spotLightL.position.set(-0.6, 0.7, 2.0)
+    spotLightL.target.position.set(0, 0.2, 5)
+    scene.add(spotLightL)
+    scene.add(spotLightL.target)
+    spotLightR = new THREE.SpotLight('#ffffff', 0, 30, 0.14, 0.5, 0.8)
+    spotLightR.position.set(0.6, 0.7, 2.0)
+    spotLightR.target.position.set(0, 0.2, 5)
+    scene.add(spotLightR)
+    scene.add(spotLightR.target)
+  }
+
+  // 环境贴图
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  if (qualityLevel === 'low') {
+    const envTexture = new THREE.PMREMGenerator(renderer).fromScene(new THREE.Scene()).texture
+    scene.environment = envTexture
+    pmrem.dispose()
+  } else {
+    pmrem.compileEquirectangularShader()
+    const envScene = new THREE.Scene()
+    envScene.background = new THREE.Color('#0a0a0f')
+    const el1 = new THREE.DirectionalLight('#ffffff', 2)
+    el1.position.set(5, 8, 5)
+    envScene.add(el1)
+    const el2 = new THREE.DirectionalLight('#4466aa', 1)
+    el2.position.set(-5, 3, -5)
+    envScene.add(el2)
+    const envSphereSegs = qualityLevel === 'high' ? 16 : 8
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(20, envSphereSegs, envSphereSegs), new THREE.MeshStandardMaterial({
+      color: '#111122', side: THREE.BackSide
+    })))
+    scene.environment = pmrem.fromScene(envScene, 0.04).texture
+    pmrem.dispose()
+  }
+
+  // 地面
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.ShadowMaterial({ opacity: qualityLevel === 'low' ? 0.08 : 0.15 }))
+  shadow.rotation.x = -Math.PI / 2
+  shadow.position.y = -0.01
+  shadow.receiveShadow = true
+  scene.add(shadow)
+
+  // 路线线条
+  routeLineFL = createRouteLine(1.0, true)
+  routeLineFR = createRouteLine(-1.0, true)
+  routeLineRL = createRouteLine(1.0, false)
+  routeLineRR = createRouteLine(-1.0, false)
+  scene.add(routeLineFL)
+  scene.add(routeLineFR)
+  scene.add(routeLineRL)
+  scene.add(routeLineRR)
+
+  // 加载模型
+  const isAppPlusModel = typeof plus !== 'undefined' ||
+                         !!window.__uniappplus ||
+                         window.location.protocol === 'file:' ||
+                         !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.UNIAPP)
+  console.log('[TeslaScene] model loading started, isAppPlus =', isAppPlusModel)
+
+  function onModelLoaded(gltf, fromPath) {
+    console.log('[TeslaScene] model loaded successfully from:', fromPath)
+    const m = gltf.scene
+    const box = new THREE.Box3().setFromObject(m)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    const s = 3.5 / Math.max(size.x, size.y, size.z)
+    m.scale.setScalar(s)
+    m.position.x = -center.x * s
+    m.position.y = -box.min.y * s + 0.3
+    m.position.z = -center.z * s
+    scene.add(m)
+    m.updateMatrixWorld(true)
+    initModelRefs(m)
+    if (ownerVm) ownerVm.callMethod('onSceneReady')
+  }
+
+  function createGLTFLoaderWithDraco() {
+    const loader = new GLTFLoader()
+    if (DRACOLoader) {
+      const dracoLoader = new DRACOLoader()
+      const dracoPaths = isAppPlusModel
+        ? [window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1) + 'static/draco/gltf/', './static/draco/gltf/', '/static/draco/gltf/']
+        : ['./static/draco/gltf/', '/static/draco/gltf/']
+      dracoLoader.setDecoderPath(dracoPaths[0])
+      dracoLoader.setDecoderConfig({ type: 'js' })
+      loader.setDRACOLoader(dracoLoader)
+      console.log('[TeslaScene] DRACOLoader configured, decoder path:', dracoPaths[0])
+    }
+    return loader
+  }
+
+  var dracoModelPaths = ['./static/model/scene-draco.glb', '/static/model/scene-draco.glb']
+  var fallbackModelPaths = ['./static/model/scene.gltf', '/static/model/scene.gltf']
+  var modelLoadIdx = 0
+  var useDracoModel = true
+
+  function tryLoadModel() {
+    var paths = useDracoModel ? dracoModelPaths : fallbackModelPaths
+    if (modelLoadIdx >= paths.length) {
+      if (useDracoModel) {
+        console.warn('[TeslaScene] All Draco GLB paths failed, falling back to original GLTF')
+        useDracoModel = false
+        modelLoadIdx = 0
+        tryLoadModel()
+        return
+      }
+      console.error('[TeslaScene] All model paths failed')
+      return
+    }
+    console.log('[TeslaScene] trying model path:', paths[modelLoadIdx], 'draco:', useDracoModel)
+    var loader = createGLTFLoaderWithDraco()
+    loader.load(paths[modelLoadIdx], function (gltf) {
+      onModelLoaded(gltf, paths[modelLoadIdx])
+    }, function (progress) {
+      if (progress.total > 0) {
+        console.log('[TeslaScene] model loading progress:', Math.round(progress.loaded / progress.total * 100) + '%')
+      }
+    }, function (err) {
+      console.warn('[TeslaScene] model load error from:', paths[modelLoadIdx], err)
+      modelLoadIdx++
+      tryLoadModel()
+    })
+  }
+
+  if (isAppPlusModel && typeof plus !== 'undefined') {
+    function readFileAsArrayBuffer(filePath) {
+      return new Promise(function (resolve, reject) {
+        var localUrl = plus.io.convertLocalFileSystemURL(filePath)
+        console.log('[TeslaScene] plus.io reading:', filePath, '->', localUrl)
+        plus.io.resolveLocalFileSystemURL(localUrl, function (entry) {
+          entry.file(function (file) {
+            var reader = new plus.io.FileReader()
+            reader.onloadend = function (e) {
+              if (e.target.result) {
+                var base64 = e.target.result.split(',')[1]
+                if (base64) {
+                  var binaryStr = atob(base64)
+                  var bytes = new Uint8Array(binaryStr.length)
+                  for (var i = 0; i < binaryStr.length; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i)
+                  }
+                  resolve(bytes.buffer)
+                  return
+                }
+              }
+              reject(new Error('Empty result'))
+            }
+            reader.onerror = function (err) { reject(err) }
+            reader.readAsDataURL(file)
+          }, reject)
+        }, function (err) {
+          console.warn('[TeslaScene] resolveLocalFileSystemURL failed for:', filePath, 'error:', err)
+          reject(err)
+        })
+      })
+    }
+
+    async function loadModelPlusIO() {
+      var glbPaths = ['/static/model/scene-draco.glb', 'static/model/scene-draco.glb']
+      var glbBuffer = null
+      var usedPath = null
+
+      for (var pi = 0; pi < glbPaths.length; pi++) {
+        try {
+          console.log('[TeslaScene] Trying plus.io GLB path:', glbPaths[pi])
+          glbBuffer = await readFileAsArrayBuffer(glbPaths[pi])
+          usedPath = glbPaths[pi]
+          console.log('[TeslaScene] GLB loaded via plus.io, size:', (glbBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB')
+          break
+        } catch (err) {
+          console.warn('[TeslaScene] Failed to read GLB:', glbPaths[pi], err)
+        }
+      }
+
+      if (glbBuffer) {
+        var loader = createGLTFLoaderWithDraco()
+        loader.parse(glbBuffer, usedPath.substring(0, usedPath.lastIndexOf('/') + 1), function (gltf) {
+          onModelLoaded(gltf, 'plus.io: ' + usedPath)
+        }, function (err) {
+          console.error('[TeslaScene] GLB parse error:', err)
+          tryLoadModel()
+        })
+      } else {
+        console.warn('[TeslaScene] All plus.io GLB paths failed, trying XHR fallback')
+        tryLoadModel()
+      }
+    }
+
+    loadModelPlusIO()
+  } else {
+    tryLoadModel()
+  }
+}
+
+function initModelRefs(model) {
+  const doorNames = ['DOOR-L-F', 'DOOR-R-F', 'DOOR-L-B', 'DOOR-R-B']
+
+  // 1. 车门
+  for (const name of doorNames) {
+    const node = model.getObjectByName(name)
+    if (!node) continue
+    doorNodes[name] = node
+    doorInitialQuats[name] = node.quaternion.clone()
+    node.traverse((c) => {
+      if (c instanceof THREE.Mesh) doorMeshes.push({ mesh: c, doorName: name })
+    })
+  }
+
+  // 2. 后备箱
+  trunkNode = model.getObjectByName('DOOR-B')
+  if (trunkNode) {
+    trunkInitialQuat = trunkNode.quaternion.clone()
+    trunkNode.traverse((c) => {
+      if (c instanceof THREE.Mesh) trunkMeshes.push(c)
+    })
+  }
+
+  // 3. 车轮
+  const wheelGroupNames = new Set()
+  model.traverse((c) => {
+    if (c.name.includes('tyre_') || c.name.startsWith('tyre')) {
+      if (c.parent) wheelGroupNames.add(c.parent.name)
+    }
+  })
+  const caliperNames = ['brakeCaliper']
+  for (const gn of wheelGroupNames) {
+    const group = model.getObjectByName(gn)
+    if (!group) continue
+    const calipers = []
+    const rotatingParts = []
+    group.traverse((c) => {
+      if (c === group) return
+      const isCaliper = caliperNames.some(p => c.name.includes(p))
+      if (isCaliper) calipers.push(c)
+      else rotatingParts.push(c)
+    })
+    if (rotatingParts.length === 0) continue
+    const hubBox = new THREE.Box3()
+    for (const p of rotatingParts) hubBox.expandByObject(p)
+    const hubCenter = group.worldToLocal(hubBox.getCenter(new THREE.Vector3()))
+    const pivot = new THREE.Object3D()
+    pivot.name = 'wheelPivot_' + gn
+    pivot.position.copy(hubCenter)
+    group.add(pivot)
+    for (const p of rotatingParts) pivot.attach(p)
+    wheelPivots.push({ pivot, calipers })
+  }
+
+  // 4. 后视镜
+  const mirrorParents = new Set()
+  model.traverse((c) => {
+    if (!(c instanceof THREE.Mesh) || !c.material) return
+    const mats = Array.isArray(c.material) ? c.material : [c.material]
+    for (const mat of mats) {
+      const m = mat
+      if (m.name && m.name.includes('mirror') && c.parent && !mirrorParents.has(c.parent)) {
+        mirrorParents.add(c.parent)
+        const wp = new THREE.Vector3()
+        c.parent.getWorldPosition(wp)
+        mirrorNodes.push({ node: c.parent, initialQuat: c.parent.quaternion.clone(), isLeft: wp.x > 0 })
+      }
+    }
+  })
+
+  // 5. 灯光材质
+  const lightPatterns = [
+    ['lights1', /lights1/i], ['lights2', /lights2/i], ['light3', /light3/i],
+    ['red_s', /red_s/i], ['lamp', /lamp/i],
+  ]
+  model.traverse((c) => {
+    if (!(c instanceof THREE.Mesh) || !c.material) return
+    const mats = Array.isArray(c.material) ? c.material : [c.material]
+    for (const mat of mats) {
+      const m = mat
+      if (!m.isMeshStandardMaterial) continue
+      for (const [key, pattern] of lightPatterns) {
+        if (pattern.test(m.name || '')) {
+          if (!lightMats[key]) lightMats[key] = []
+          if (!lightMats[key].includes(m)) lightMats[key].push(m)
+          const wp = new THREE.Vector3()
+          c.getWorldPosition(wp)
+          if (key === 'lights2') (wp.x > 0 ? leftSignalMats : rightSignalMats).push(m)
+          if (key === 'lights1') (wp.x > 0 ? leftHeadlightMats : rightHeadlightMats).push(m)
+          if (key === 'light3') (wp.x > 0 ? leftTailMats : rightTailMats).push(m)
+          if (key === 'lamp') (wp.z > 0 ? frontFogMats : rearFogMats).push(m)
+        }
+      }
+    }
+  })
+
+  // 6. 颜色材质
+  const colorPatterns = {
+    carpaint: /carpaint/i, interior: /interior/i, tire: /tire/i,
+    caliper: /capiler/i, leather: /leather_Black|leather_White|dash_leather/i,
+    carpet: /Carpet/i, chrome: /chrome/i, glass: /d_glass|vd_glass/i,
+    rim: /^rim$|_rim_|rimBright|rimBright7|rimBright008|wheel_metal/i,
+  }
+  for (const [group, pattern] of Object.entries(colorPatterns)) {
+    model.traverse((c) => {
+      if (!(c instanceof THREE.Mesh) || !c.material) return
+      const mats = Array.isArray(c.material) ? c.material : [c.material]
+      for (const mat of mats) {
+        const m = mat
+        if (m.isMeshStandardMaterial && pattern.test(m.name || '')) {
+          if (!colorMats[group]) colorMats[group] = []
+          if (!colorMats[group].includes(m)) colorMats[group].push(m)
+        }
+      }
+    })
+  }
+
+  // 7. 玻璃材质收集
+  model.traverse((c) => {
+    if (!(c instanceof THREE.Mesh) || !c.material) return
+    const mats = Array.isArray(c.material) ? c.material : [c.material]
+    for (const mat of mats) {
+      const m = mat
+      if (m.isMeshStandardMaterial && m.name && (m.name.includes('d_glass') || m.name.includes('vd_glass'))) {
+        if (!glassMaterials.includes(m)) glassMaterials.push(m)
+      }
+    }
+  })
+
+  // 8. 初始化材质
+  model.traverse((c) => {
+    if (!(c instanceof THREE.Mesh)) return
+    c.castShadow = qualityLevel !== 'low'
+    c.receiveShadow = qualityLevel !== 'low'
+    const mats = Array.isArray(c.material) ? c.material : [c.material]
+    for (const mat of mats) {
+      const m = mat
+      if (!m.isMeshStandardMaterial) continue
+      m.envMapIntensity = qualityLevel === 'low' ? 0.8 : (qualityLevel === 'medium' ? 1.2 : 1.5)
+      if (m.name && (m.name.includes('d_glass') || m.name.includes('vd_glass'))) {
+        m.transparent = true; m.opacity = 0.25; m.depthWrite = false; m.side = THREE.DoubleSide
+      }
+      m.needsUpdate = true
+    }
+  })
+
+  // 9. 充电目标
+  const chargeTargetNode = model.getObjectByName('sm007_red_s_0')
+  if (chargeTargetNode) {
+    chargeTargetNode.getWorldPosition(chargeTargetPos)
+  } else {
+    chargeTargetPos.set(0.95, 0.55, -0.3)
+  }
+
+  // 10. 充电屏幕
+  displayNode = model.getObjectByName('sm_Display_0')
+  if (displayNode) {
+    const displayBox = new THREE.Box3().setFromObject(displayNode)
+    displayCenter = displayBox.getCenter(new THREE.Vector3())
+    displaySize = displayBox.getSize(new THREE.Vector3())
+    const ringCount = qualityLevel === 'low' ? 80 : (qualityLevel === 'medium' ? 140 : 200)
+    const ringGeo = new THREE.BufferGeometry()
+    const ringPositions = new Float32Array(ringCount * 3)
+    const ringPhases = new Float32Array(ringCount)
+    for (let i = 0; i < ringCount; i++) {
+      ringPhases[i] = (i / ringCount) * Math.PI * 2
+      ringPositions[i * 3] = 0
+      ringPositions[i * 3 + 1] = 0
+      ringPositions[i * 3 + 2] = 0
+    }
+    ringGeo.setAttribute('position', new THREE.BufferAttribute(ringPositions, 3))
+    ringGeo.setAttribute('aPhase', new THREE.BufferAttribute(ringPhases, 1))
+    chargeScreenRing = new THREE.Points(ringGeo, new THREE.PointsMaterial({
+      color: '#00ff88', size: 0.02, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }))
+    scene.add(chargeScreenRing)
+  }
+
+  // 11. 充电口发光
+  chargePortGlow = new THREE.PointLight('#00ff88', 0, 2)
+  chargePortGlow.position.copy(chargeTargetPos).add(new THREE.Vector3(0, 0, 0.1))
+  scene.add(chargePortGlow)
+
+  // 12. 充电粒子
+  const pCount = qualityLevel === 'low' ? 150 : (qualityLevel === 'medium' ? 250 : 400)
+  const pGeo = new THREE.BufferGeometry()
+  const positions = new Float32Array(pCount * 3)
+  const pData = new Float32Array(pCount * 5)
+  for (let i = 0; i < pCount; i++) {
+    const sx = 0.5 + Math.random() * 1.0
+    const sy = 0.0 + Math.random() * 0.3
+    const sz = -1.5 + Math.random() * 1.0
+    positions[i * 3] = sx
+    positions[i * 3 + 1] = sy
+    positions[i * 3 + 2] = sz
+    pData[i * 5] = sx
+    pData[i * 5 + 1] = sy
+    pData[i * 5 + 2] = sz
+    pData[i * 5 + 3] = Math.random() * Math.PI * 2
+    pData[i * 5 + 4] = 0.3 + Math.random() * 0.7
+  }
+  pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  pGeo.setAttribute('aData', new THREE.BufferAttribute(pData, 5))
+  chargingParticles = new THREE.Points(pGeo, new THREE.PointsMaterial({
+    color: '#00ff88', size: 0.03, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }))
+  scene.add(chargingParticles)
+
+  // 13. 车牌
+  model.traverse((c) => {
+    if (c.name.includes('Car_Plate') && c.name.includes('440mm')) {
+      if (c.name.includes('002')) { rearPlateNode = c }
+      else { frontPlateNode = c }
+    }
+  })
+
+  // 14. RootNode
+  rootNode = model.getObjectByName('RootNode')
+  if (rootNode) {
+    rootInitialPos = rootNode.position.clone()
+    rootNode.rotation.y = Math.PI
+  }
+
+  console.log('[TeslaScene renderjs] Model init complete')
+}
+
+function animate(timestamp) {
+  animId = requestAnimationFrame(animate)
+  if (!timestamp) timestamp = performance.now()
+  if (timestamp - lastFrameTime < frameInterval) return
+  const prevFrameTime = lastFrameTime || timestamp
+  lastFrameTime = timestamp
+
+  if (!ownerState || !composer) { if (composer) composer.render(); return }
+  const dt = Math.min(Math.max((timestamp - prevFrameTime) / 1000, 1 / 60), 0.05)
+  const time = timestamp / 1000
+  const state = ownerState
+
+  // 1. 入场动画
+  if (!entryDone) {
+    entryProgress += dt * 0.4
+    if (entryProgress >= 1) {
+      entryProgress = 1;
+      entryDone = true
+    }
+    const t = 1 - Math.pow(1 - entryProgress, 3)
+
+    if (rootNode) {
+      const s = 0.01 + t * 0.99
+      rootNode.scale.setScalar(s)
+      // rootNode.rotation.y = Math.PI - THREE.MathUtils.degToRad(60)
+      rootNode.rotation.y = -1.0471975511965976
+    }
+
+    if (rootNode) {
+      const startX = -10
+      const endX = rootInitialPos.x
+      rootNode.position.x = startX + (endX - startX) * t
+    }
+
+    const entryWheelSpeed = dt * 15 * (1 - t * 0.5)
+    for (const wp of wheelPivots) {
+      wp.pivot.rotateX(entryWheelSpeed)
+    }
+
+    const camPosX = -0.83
+    const camPosY = 4.2
+    const camPosZ = 3.33
+
+    // 动画过程平滑过渡到你想要的相机位置
+    camera.position.x += (camPosX - camera.position.x) * 0.1
+    camera.position.y += (camPosY - camera.position.y) * 0.1
+    camera.position.z += (camPosZ - camera.position.z) * 0.1
+
+    camera.lookAt(0, 0.5, 0)
+  }
+
+
+  // 2. 速度自动管理
+  if (state.gear === 'P') {
+    state.speed = Math.max(0, (state.speed || 0) - dt * 30)
+  } else if (state.gear === 'D' && state.speed < 30) {
+    state.speed = Math.min((state.speed || 0) + dt * 10, 30)
+  } else if (state.gear === 'R' && state.speed < 5) {
+    state.speed = Math.min((state.speed || 0) + dt * 5, 5)
+  } else if (state.gear === 'N') {
+    state.speed = Math.max(0, (state.speed || 0) - dt * 3)
+  }
+
+  // 3. 车门动画
+  const doorConfig = [
+    ['DOOR-L-F', state.doors.frontLeft, -1],
+    ['DOOR-R-F', state.doors.frontRight, 1],
+    ['DOOR-L-B', state.doors.rearLeft, -1],
+    ['DOOR-R-B', state.doors.rearRight, 1],
+  ]
+  for (const [name, target, dir] of doorConfig) {
+    const node = doorNodes[name], iq = doorInitialQuats[name]
+    if (!node || !iq) continue
+    const a = target * 65 * (Math.PI / 180) * dir
+    const hq = new THREE.Quaternion(0, Math.sin(a / 2), 0, Math.cos(a / 2))
+    node.quaternion.slerp(hq.clone().multiply(iq), Math.min(dt * 8, 1))
+  }
+
+  // 4. 后备箱动画
+  if (trunkNode) {
+    const a = state.trunks.rear * 55 * (Math.PI / 180)
+    const hq = new THREE.Quaternion(Math.sin(a / 2), 0, 0, Math.cos(a / 2))
+    trunkNode.quaternion.slerp(hq.clone().multiply(trunkInitialQuat), Math.min(dt * 5, 1))
+  }
+
+  // 5. 轮胎旋转
+  const sf = state.speed / 60
+  let wr = 0
+  if (state.gear === 'D') wr = sf * dt * 20
+  else if (state.gear === 'R') wr = -sf * dt * 20
+  else if (state.gear === 'N' && state.speed > 0) wr = sf * dt * 15
+  if (wr !== 0) { for (const wp of wheelPivots) { wp.pivot.rotateX(wr) } }
+
+  // 6. 后视镜折叠
+  for (const mn of mirrorNodes) {
+    const foldAngle = state.mirrorFolded ? (mn.isLeft ? -0.8 : 0.8) : 0
+    const fq = new THREE.Quaternion(0, Math.sin(foldAngle / 2), 0, Math.cos(foldAngle / 2))
+    mn.node.quaternion.slerp(mn.initialQuat.clone().multiply(fq), Math.min(dt * 5, 1))
+  }
+
+  // 7. 灯光系统
+  const blinkOn = Math.sin(time * Math.PI * 3) > 0
+  const { drl, headlightLow, headlightHigh, turnLeft, turnRight, hazard, brakeLight, tailLight, frontFog, rearFog } = state.lights
+
+  let activeFrontMode = 'off'
+  if (state.charging) { activeFrontMode = 'charging' }
+  else if (hazard && blinkOn) { activeFrontMode = 'hazard' }
+  else if (headlightHigh) { activeFrontMode = 'high' }
+  else if (headlightLow) { activeFrontMode = 'low' }
+  else if (drl) { activeFrontMode = 'drl' }
+  else {
+    if (state.gear === 'P') activeFrontMode = 'off'
+    else if (state.gear === 'D' || state.gear === 'R') activeFrontMode = 'low'
+    else if (state.gear === 'N') activeFrontMode = 'drl'
+  }
+
+  let emissiveColor = '#000000', emissiveIntensity = 0
+  switch (activeFrontMode) {
+    case 'high': emissiveColor = '#ffffff'; emissiveIntensity = 5; break
+    case 'low': emissiveColor = '#ffffff'; emissiveIntensity = 2.5; break
+    case 'drl': emissiveColor = '#f0f8ff'; emissiveIntensity = 0.6; break
+    case 'charging': emissiveColor = '#00ff88'; emissiveIntensity = (Math.sin(time * 3) + 1) / 2 * 2; break
+    case 'hazard': emissiveColor = '#ff0000'; emissiveIntensity = 3; break
+  }
+  setEmissive(lightMats['lights1'] || [], emissiveColor, emissiveIntensity)
+
+  const lightSettings = {
+    off: { intensity: 0, angle: 0.12, distance: 15, penumbra: 0.6, decay: 1, color: '#ffffff' },
+    drl: { intensity: qualityLevel === 'medium' ? 0.8 : 1.2, angle: 0.08, distance: 12, penumbra: 0.7, decay: 1, color: '#aaccff' },
+    low: { intensity: qualityLevel === 'medium' ? 5.0 : 8.0, angle: 0.14, distance: 25, penumbra: 0.5, decay: 0.8, color: '#fff5e0' },
+    high: { intensity: qualityLevel === 'medium' ? 18.0 : 28.0, angle: 0.22, distance: 45, penumbra: 0.3, decay: 0.5, color: '#ffffff' },
+    charging: { intensity: 0, angle: 0.12, distance: 15, penumbra: 0.6, decay: 1, color: '#00ff88' },
+    hazard: { intensity: 0, angle: 0.12, distance: 15, penumbra: 0.6, decay: 1, color: '#ff0000' }
+  }
+  const s = lightSettings[activeFrontMode] || lightSettings.off
+  if (spotLightL && spotLightR) {
+    spotLightL.intensity = spotLightR.intensity = s.intensity
+    spotLightL.angle = spotLightR.angle = s.angle
+    spotLightL.distance = spotLightR.distance = s.distance
+    spotLightL.penumbra = spotLightR.penumbra = s.penumbra
+    spotLightL.decay = spotLightR.decay = s.decay
+    spotLightL.color.set(s.color); spotLightR.color.set(s.color)
+    if (activeFrontMode === 'high') {
+      spotLightL.target.position.set(0, 0.4, 12); spotLightR.target.position.set(0, 0.4, 12)
+    } else {
+      spotLightL.target.position.set(0, 0.2, 5); spotLightR.target.position.set(0, 0.2, 5)
+    }
+  }
+
+  // 转向灯
+  const leftTurnActive = (turnLeft || hazard) && blinkOn
+  const rightTurnActive = (turnRight || hazard) && blinkOn
+  const turnColor = hazard ? '#ff0000' : '#ff8800'
+  setEmissive(leftSignalMats, leftTurnActive ? turnColor : '#000000', leftTurnActive ? 4 : 0)
+  setEmissive(rightSignalMats, rightTurnActive ? turnColor : '#000000', rightTurnActive ? 4 : 0)
+  if (turnLeft && blinkOn && !hazard && !state.charging) setEmissive(leftHeadlightMats, '#ff8800', 2)
+  if (turnRight && blinkOn && !hazard && !state.charging) setEmissive(rightHeadlightMats, '#ff8800', 2)
+
+  // 尾灯
+  const leftRearTurn = (turnLeft || hazard) && blinkOn
+  const rightRearTurn = (turnRight || hazard) && blinkOn
+  const autoTail = (state.gear === 'D' || state.gear === 'R') && !state.charging && !hazard
+  const leftTailOn = brakeLight || (hazard && blinkOn) || autoTail || leftRearTurn || tailLight
+  const rightTailOn = brakeLight || (hazard && blinkOn) || autoTail || rightRearTurn || tailLight
+  if (state.charging) {
+    const breathe = (Math.sin(time * 3) + 1) / 2
+    setEmissive(leftTailMats, '#00ff88', breathe * 2)
+    setEmissive(rightTailMats, '#00ff88', breathe * 2)
+  } else {
+    setEmissive(leftTailMats, leftTailOn ? '#ff0000' : '#000000', leftTailOn ? (brakeLight ? 5 : 4) : 0)
+    setEmissive(rightTailMats, rightTailOn ? '#ff0000' : '#000000', rightTailOn ? (brakeLight ? 5 : 4) : 0)
+  }
+  setEmissive(lightMats['red_s'] || [], '#ff0000', brakeLight ? 5 : 0)
+
+  // 雾灯
+  if (hazard && blinkOn) { setEmissive(frontFogMats, '#ff0000', 2) }
+  else { setEmissive(frontFogMats, '#ffe4b5', frontFog ? 1.5 : 0) }
+  setEmissive(rearFogMats, '#ff4400', rearFog ? 2 : 0)
+
+  // 8. 充电粒子
+  if (chargingParticles) {
+    const pm = chargingParticles.material
+    if (state.charging) {
+      pm.opacity = Math.min(pm.opacity + dt * 2, 0.8)
+      const pa = chargingParticles.geometry.attributes.position
+      const da = chargingParticles.geometry.attributes.aData
+      const posArr = pa.array
+      const dataArr = da ? da.array : null
+      if (dataArr) {
+        for (let i = 0; i < posArr.length / 3; i++) {
+          const ox = dataArr[i * 5], oy = dataArr[i * 5 + 1], oz = dataArr[i * 5 + 2]
+          const phase = dataArr[i * 5 + 3], spd = dataArr[i * 5 + 4]
+          const rawCycle = (time * spd * 0.4 + phase / (Math.PI * 2)) % 1.0
+          const ct = 1.0 - rawCycle
+          const jitter = Math.sin(phase * 7.3 + time * 2) * 0.03 * ct
+          posArr[i * 3] = ox * ct + chargeTargetPos.x * (1 - ct) + jitter
+          posArr[i * 3 + 1] = oy * ct + chargeTargetPos.y * (1 - ct) + Math.sin(ct * Math.PI) * 0.3 * ct + jitter
+          posArr[i * 3 + 2] = oz * ct + chargeTargetPos.z * (1 - ct) + jitter
+        }
+        pa.needsUpdate = true
+      }
+      chargeTimer += dt
+    } else {
+      pm.opacity = Math.max(0, pm.opacity - dt * 2)
+    }
+  }
+
+  // 9. 充电屏幕环
+  if (chargeScreenRing && displayNode) {
+    const mat = chargeScreenRing.material
+    if (state.charging) {
+      mat.opacity = Math.min(mat.opacity + dt * 2, 0.9)
+      const posArr = chargeScreenRing.geometry.attributes.position.array
+      const phaseArr = chargeScreenRing.geometry.attributes.aPhase.array
+      const hw = displaySize.x / 2 + 0.02
+      const hh = displaySize.y / 2 + 0.02
+      for (let i = 0; i < posArr.length / 3; i++) {
+        const phase = (phaseArr[i] + time * 1.5) % (Math.PI * 2)
+        const perimeter = 2 * (hw * 2 + hh * 2)
+        const dist = (phase / (Math.PI * 2)) * perimeter
+        let x, y
+        const z = displayCenter.z + 0.02
+        if (dist < hw * 2) { x = displayCenter.x - hw + dist; y = displayCenter.y - hh }
+        else if (dist < hw * 2 + hh * 2) { x = displayCenter.x + hw; y = displayCenter.y - hh + (dist - hw * 2) }
+        else if (dist < hw * 2 * 2 + hh * 2) { x = displayCenter.x + hw - (dist - hw * 2 - hh * 2); y = displayCenter.y + hh }
+        else { x = displayCenter.x - hw; y = displayCenter.y + hh - (dist - hw * 2 * 2 - hh * 2) }
+        posArr[i * 3] = x; posArr[i * 3 + 1] = y; posArr[i * 3 + 2] = z
+      }
+      chargeScreenRing.geometry.attributes.position.needsUpdate = true
+    } else {
+      mat.opacity = Math.max(0, mat.opacity - dt * 2)
+    }
+  }
+
+  // 10. 充电口发光
+  if (chargePortGlow) {
+    if (state.charging) {
+      const socFactor = state.soc ? Math.max(0, 1 - state.soc / 100) : 0.5
+      const baseIntensity = 0.3 + socFactor * 1.2
+      chargePortGlow.intensity = baseIntensity + (Math.sin(time * 4) + 1) / 2 * 0.8
+    } else { chargePortGlow.intensity = Math.max(0, chargePortGlow.intensity - dt * 3) }
+  }
+
+  // 11. 路线线条
+  const showForward = state.gear === 'D'
+  const showReverse = state.gear === 'R'
+  const routeMaxOpacity = 0.45
+
+  function animateRouteGroup(group, targetOp, direction) {
+    const scrollSpeed = state.speed * 0.05 * direction
+    group.traverse((c) => {
+      if (c instanceof THREE.Mesh) {
+        const mat = c.material
+        mat.opacity += (targetOp - mat.opacity) * Math.min(dt * 5, 1)
+        if (targetOp > 0 && state.speed > 0) {
+          c.position.z -= scrollSpeed * dt
+          const segLen = 0.8, gapLen = 0.6, totalSegs = 8
+          const totalLen = totalSegs * (segLen + gapLen)
+          if (direction > 0 && c.position.z < 2.0 - gapLen) c.position.z += totalLen
+          else if (direction < 0 && c.position.z > -(2.0 - gapLen)) c.position.z -= totalLen
+        }
+      }
+    })
+  }
+
+  if (rootNode) {
+    routeLineFL.quaternion.copy(rootNode.quaternion)
+    routeLineFR.quaternion.copy(rootNode.quaternion)
+    routeLineRL.quaternion.copy(rootNode.quaternion)
+    routeLineRR.quaternion.copy(rootNode.quaternion)
+  }
+  if (showForward) { animateRouteGroup(routeLineFL, routeMaxOpacity, 1); animateRouteGroup(routeLineFR, routeMaxOpacity, 1) }
+  else { animateRouteGroup(routeLineFL, 0, 0); animateRouteGroup(routeLineFR, 0, 0) }
+  if (showReverse) { animateRouteGroup(routeLineRL, routeMaxOpacity, -1); animateRouteGroup(routeLineRR, routeMaxOpacity, -1) }
+  else { animateRouteGroup(routeLineRL, 0, 0); animateRouteGroup(routeLineRR, 0, 0) }
+
+  // 12. 车身姿态
+  if (rootNode) {
+    let tp = 0, tpy = rootInitialPos.y
+    if (state.gear === 'D') { tp = -0.01; tpy -= 0.01 }
+    else if (state.gear === 'R') { tp = 0.01; tpy -= 0.01 }
+    rootNode.rotation.x += (tp - rootNode.rotation.x) * Math.min(dt * 3, 1)
+    rootNode.position.y += (tpy - rootNode.position.y) * Math.min(dt * 3, 1)
+  }
+
+  if (state.sentryMode && !state.charging && state.gear === 'P') {
+    const sentryBlink = Math.sin(time * 6) > 0.3
+    setEmissive(leftHeadlightMats, '#ff2200', sentryBlink ? 1.5 : 0)
+    setEmissive(rightHeadlightMats, '#ff2200', sentryBlink ? 1.5 : 0)
+  }
+
+  // 13. 颜色更新
+  for (const [group, color] of Object.entries(state.colors)) {
+    const mats = colorMats[group]
+    if (!mats) continue
+    for (const mat of mats) {
+      mat.color.set(color)
+      if (group === 'glass') { mat.transparent = true; mat.depthWrite = false; mat.side = THREE.DoubleSide }
+    }
+  }
+  const glassColor = new THREE.Color(state.colors.glass)
+  const brightness = glassColor.r * 0.299 + glassColor.g * 0.587 + glassColor.b * 0.114
+  const glassOp = 0.08 + (1 - brightness) * 0.35
+  for (const mat of glassMaterials) { mat.opacity = glassOp; mat.transparent = true; mat.depthWrite = false; mat.side = THREE.DoubleSide }
+
+  if (currentDarkMode) { ambientLight.intensity += (0.3 - ambientLight.intensity) * Math.min(dt * 3, 1); dirLight1.intensity += (1.5 - dirLight1.intensity) * Math.min(dt * 3, 1) }
+  else { ambientLight.intensity += (0.8 - ambientLight.intensity) * Math.min(dt * 3, 1); dirLight1.intensity += (3.0 - dirLight1.intensity) * Math.min(dt * 3, 1) }
+
+  controls.update()
+  if (useBloom) {
+    composer.render()
+  } else {
+    renderer.render(scene, camera)
+  }
+
+
+
+  //   if (rootNode && entryDone) {
+  //   console.log('【可直接复制的最终角度】rootNode.rotation.y =', rootNode.rotation.y)
+  //   console.log('【相机位置】camera.position =', camera.position.x, camera.position.y, camera.position.z)
+  //   console.log('【相机目标】controls.target =', controls.target.x, controls.target.y, controls.target.z)
+  // }
+}
+
+export default {
+  mounted() {
+    console.log('[TeslaScene] mounted called')
+
+    // iOS APP-PLUS 兼容：this.$el 可能是 #comment 节点（条件编译导致）
+    // 必须通过 containerId 用 document.getElementById 获取真正的 DOM 元素
+    const cid = _containerId || this.containerId || this.$el?.id
+    console.log('[TeslaScene] containerId:', cid, '_containerId:', _containerId, 'this.$el type:', typeof this.$el, 'nodeName:', this.$el?.nodeName)
+
+    let container = null
+    if (cid) {
+      container = document.getElementById(cid)
+      console.log('[TeslaScene] document.getElementById result:', container ? container.nodeName : 'null')
+    }
+    if (!container) {
+      container = document.querySelector('[id^="tesla-scene-"]')
+      console.log('[TeslaScene] querySelector fallback result:', container ? container.nodeName : 'null')
+    }
+    if (!container && this.$el && typeof this.$el.appendChild === 'function') {
+      container = this.$el
+      console.log('[TeslaScene] using this.$el as container')
+    }
+
+    if (!container) {
+      console.error('[TeslaScene] Container not found after all attempts')
+      return
+    }
+
+    // 确保容器有明确的尺寸（iOS APP-PLUS 可能没有自动尺寸）
+    console.log('[TeslaScene] container dimensions before fix:', container.clientWidth, 'x', container.clientHeight)
+    if (!container.clientWidth || !container.clientHeight) {
+      console.log('[TeslaScene] container has no dimensions, setting explicit size')
+      container.style.width = container.style.width || '100%'
+      container.style.height = container.style.height || '100%'
+      // 强制重排以获取尺寸
+      container.offsetHeight
+    }
+    // 如果仍然没有尺寸，设置一个默认值
+    if (!container.clientWidth || !container.clientHeight) {
+      console.log('[TeslaScene] container still has no dimensions, using parent or defaults')
+      const parent = container.parentElement
+      if (parent && parent.clientWidth && parent.clientHeight) {
+        container.style.width = parent.clientWidth + 'px'
+        container.style.height = parent.clientHeight + 'px'
+      } else {
+        container.style.width = container.style.width || '375px'
+        container.style.height = container.style.height || '400px'
+      }
+    }
+    console.log('[TeslaScene] container dimensions after fix:', container.clientWidth, 'x', container.clientHeight)
+
+    // 平台检测：renderjs 运行在 webview 中，plus 可能不可用
+    // 使用多种方法检测 APP-PLUS 环境
+    const isAppPlus = typeof plus !== 'undefined' ||
+                      !!window.__uniappplus ||
+                      window.location.protocol === 'file:' ||
+                      !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.UNIAPP)
+    console.log('[TeslaScene] platform detection result: isAppPlus =', isAppPlus)
+    console.log('[TeslaScene] typeof plus:', typeof plus)
+    console.log('[TeslaScene] window.__uniappplus:', !!window.__uniappplus)
+    console.log('[TeslaScene] location.protocol:', window.location.protocol)
+    console.log('[TeslaScene] location.href:', window.location.href)
+
+    // 动态加载 Three.js IIFE bundle
+    if (window.THREE_BUNDLE) {
+      console.log('[TeslaScene] THREE_BUNDLE already loaded, using cached version')
+      THREE = window.THREE_BUNDLE.THREE
+      OrbitControls = window.THREE_BUNDLE.OrbitControls
+      GLTFLoader = window.THREE_BUNDLE.GLTFLoader
+      DRACOLoader = window.THREE_BUNDLE.DRACOLoader
+      EffectComposer = window.THREE_BUNDLE.EffectComposer
+      RenderPass = window.THREE_BUNDLE.RenderPass
+      EffectPass = window.THREE_BUNDLE.EffectPass
+      BloomEffect = window.THREE_BUNDLE.BloomEffect
+      console.log('[TeslaScene] THREE_BUNDLE check result: THREE =', !!THREE, 'DRACOLoader =', !!DRACOLoader)
+      initScene(container)
+      animate()
+    } else {
+      // APP-PLUS webview 中静态文件路径可能不同
+      // iOS APP-PLUS 的 webview 从 app bundle 的 www/ 目录加载
+      // 尝试多种路径：基于 baseUrl 的绝对路径、相对路径、根路径等
+      let scriptPaths
+      if (isAppPlus) {
+        const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1)
+        scriptPaths = [
+          baseUrl + 'static/three-bundle.js',
+          './static/three-bundle.js',
+          '/static/three-bundle.js',
+          'static/three-bundle.js',
+          '../static/three-bundle.js',
+        ]
+      } else {
+        scriptPaths = ['./static/three-bundle.js', '/static/three-bundle.js', 'static/three-bundle.js']
+      }
+
+      let loadIdx = 0
+      function tryLoadScript() {
+        if (loadIdx >= scriptPaths.length) {
+          console.error('[TeslaScene] All script paths failed to load three-bundle.js')
+          return
+        }
+        console.log('[TeslaScene] trying script path:', scriptPaths[loadIdx])
+        const script = document.createElement('script')
+        script.src = scriptPaths[loadIdx]
+        script.onload = () => {
+          console.log('[TeslaScene] script load success from:', scriptPaths[loadIdx])
+          const bundle = window.THREE_BUNDLE
+          console.log('[TeslaScene] THREE_BUNDLE check result after load:', !!bundle, !!bundle?.THREE)
+          if (!bundle || !bundle.THREE) {
+            console.error('[TeslaScene] THREE_BUNDLE not found after script load')
+            loadIdx++
+            tryLoadScript()
+            return
+          }
+          THREE = bundle.THREE
+          OrbitControls = bundle.OrbitControls
+          GLTFLoader = bundle.GLTFLoader
+          DRACOLoader = bundle.DRACOLoader
+          EffectComposer = bundle.EffectComposer
+          RenderPass = bundle.RenderPass
+          EffectPass = bundle.EffectPass
+          BloomEffect = bundle.BloomEffect
+          console.log('[TeslaScene] THREE_BUNDLE modules loaded: THREE=', !!THREE, 'GLTFLoader=', !!GLTFLoader, 'DRACOLoader=', !!DRACOLoader)
+          initScene(container)
+          animate()
+        }
+        script.onerror = (e) => {
+          console.warn('[TeslaScene] script load error from:', scriptPaths[loadIdx], e)
+          loadIdx++
+          tryLoadScript()
+        }
+        document.head.appendChild(script)
+      }
+      tryLoadScript()
+    }
+
+    window.addEventListener('resize', this.onResize)
+  },
+  beforeDestroy() {
+    cancelAnimationFrame(animId)
+    window.removeEventListener('resize', this.onResize)
+    if (renderer) {
+      renderer.domElement.removeEventListener('webglcontextlost', null)
+      renderer.domElement.removeEventListener('webglcontextrestored', null)
+      renderer.dispose()
+      renderer.forceContextLoss()
+    }
+    if (composer) composer.dispose()
+    if (scene) {
+      scene.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose()
+        if (obj.material) {
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+          for (const m of mats) {
+            if (m.map) m.map.dispose()
+            m.dispose()
+          }
+        }
+      })
+    }
+  },
+  methods: {
+    onResize() {
+      // iOS APP-PLUS 兼容：this.$el 可能是 #comment，用 containerId 查找
+      const cid = _containerId || this.containerId || this.$el?.id
+      let el = cid ? document.getElementById(cid) : null
+      if (!el) el = document.querySelector('[id^="tesla-scene-"]')
+      if (!el && this.$el && typeof this.$el.appendChild === 'function') el = this.$el
+      if (!el || !camera || !renderer) return
+      const w = el.clientWidth || 375
+      const h = el.clientHeight || 400
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      renderer.setSize(w, h)
+      composer.setSize(w, h)
+    },
+    onCanvasClick(event) {
+      if (!renderer || !raycaster) return
+      const rect = renderer.domElement.getBoundingClientRect()
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(mouse, camera)
+      const keyMap = { 'DOOR-L-F': 'frontLeft', 'DOOR-R-F': 'frontRight', 'DOOR-L-B': 'rearLeft', 'DOOR-R-B': 'rearRight' }
+      if (doorMeshes.length > 0) {
+        const hits = raycaster.intersectObjects(doorMeshes.map(d => d.mesh), false)
+        if (hits.length > 0) {
+          const e = doorMeshes.find(d => d.mesh === hits[0].object)
+          if (e && ownerVm) { ownerVm.callMethod('onDoorClick', keyMap[e.doorName]); return }
+        }
+      }
+      if (trunkMeshes.length > 0) {
+        const hits = raycaster.intersectObjects(trunkMeshes, false)
+        if (hits.length > 0 && ownerVm) { ownerVm.callMethod('onTrunkClick'); return }
+      }
+    },
+    // 接收逻辑层 state 变化
+    onStateChange(newValue, oldValue, ownerVmParam) {
+      if (newValue) {
+        ownerState = newValue
+        ownerVm = ownerVmParam
+      }
+    },
+    onDarkModeChange(newValue) {
+      currentDarkMode = newValue
+    },
+    onLicensePlateChange(newValue) {
+      if (!newValue) return
+      if (frontPlateNode && newValue.front) applyLicensePlate(frontPlateNode, newValue.front)
+      if (rearPlateNode && newValue.rear) applyLicensePlate(rearPlateNode, newValue.rear)
+    },
+    onContainerIdChange(newValue) {
+      if (newValue) _containerId = newValue
+    }
+  }
+}
+</script>
+

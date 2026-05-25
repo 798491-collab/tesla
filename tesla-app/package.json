@@ -1,0 +1,34 @@
+{
+  "name": "tesla-app",
+  "version": "1.0.0",
+  "description": "Tesla管理平台",
+  "main": "main.js",
+  "scripts": {
+    "dev:h5": "uni",
+    "build:h5": "uni build",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:mp-weixin": "uni build -p mp-weixin"
+  },
+  "keywords": [
+    "tesla",
+    "uniapp",
+    "vue3"
+  ],
+  "author": "",
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "@vicons/fluent": "^0.13.0",
+    "pinia": "^2.1.7",
+    "postprocessing": "^6.39.1",
+    "three": "^0.184.0",
+    "vue": "^3.4.21",
+    "vue-i18n": "^9.10.2"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.3.0",
+    "@vicons/ionicons5": "^0.13.0",
+    "gltf-pipeline": "^4.3.1",
+    "sass": "^1.72.0",
+    "vite": "^8.0.14"
+  }
+}

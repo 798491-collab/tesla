@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SVG to PNG Converter</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .icon-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
+    canvas { border: 1px solid #eee; margin: 5px; }
+    .download-btn { 
+      padding: 8px 16px; 
+      background: #e82127; 
+      color: white; 
+      border: none; 
+      cursor: pointer;
+      margin: 5px;
+    }
+    .download-btn:hover { background: #c41a1f; }
+  </style>
+</head>
+<body>
+  <h1>Fluent Icons - SVG to PNG Converter</h1>
+  <p>点击按钮下载 PNG 图标（48x48 像素）</p>
+  <div id="icons"></div>
+  
+  <script>
+    const icons = [{"name":"home","regular":"home-24-regular","filled":"home-24-filled"},{"name":"vehicle","regular":"vehicle-car-24-regular","filled":"vehicle-car-24-filled"},{"name":"control","regular":"phone-desktop-24-regular","filled":"phone-desktop-24-filled"},{"name":"profile","regular":"person-24-regular","filled":"person-24-filled"}];
+    const colors = {"regular":"999999","filled":"e82127"};
+    const size = 48;
+    
+    async function loadSVG(url) {
+      const response = await fetch(url);
+      return await response.text();
+    }
+    
+    function svgToPNG(svgContent, color, filename) {
+      return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        
+        const img = new Image();
+        const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(svgBlob);
+        
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, size, size);
+          URL.revokeObjectURL(url);
+          
+          canvas.toBlob((blob) => {
+            resolve({ blob, canvas, filename });
+          }, 'image/png');
+        };
+        
+        img.src = url;
+      });
+    }
+    
+    function downloadPNG(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    
+    async function renderIcons() {
+      const container = document.getElementById('icons');
+      
+      for (const icon of icons) {
+        const div = document.createElement('div');
+        div.className = 'icon-item';
+        div.innerHTML = '<h3>' + icon.name + '</h3>';
+        
+        // Regular (灰色)
+        const regularUrl = 'https://api.iconify.design/fluent/' + icon.regular + '.svg?color=%23' + colors.regular;
+        const regularSVG = await loadSVG(regularUrl);
+        const regularResult = await svgToPNG(regularSVG, colors.regular, icon.name + '.png');
+        
+        const regularCanvas = regularResult.canvas;
+        const regularBtn = document.createElement('button');
+        regularBtn.className = 'download-btn';
+        regularBtn.textContent = '下载 ' + icon.name + '.png (灰色)';
+        regularBtn.onclick = () => downloadPNG(regularResult.blob, icon.name + '.png');
+        
+        // Filled (红色)
+        const filledUrl = 'https://api.iconify.design/fluent/' + icon.filled + '.svg?color=%23' + colors.filled;
+        const filledSVG = await loadSVG(filledUrl);
+        const filledResult = await svgToPNG(filledSVG, colors.filled, icon.name + '-active.png');
+        
+        const filledCanvas = filledResult.canvas;
+        const filledBtn = document.createElement('button');
+        filledBtn.className = 'download-btn';
+        filledBtn.textContent = '下载 ' + icon.name + '-active.png (红色)';
+        filledBtn.onclick = () => downloadPNG(filledResult.blob, icon.name + '-active.png');
+        
+        div.appendChild(regularCanvas);
+        div.appendChild(regularBtn);
+        div.appendChild(filledCanvas);
+        div.appendChild(filledBtn);
+        container.appendChild(div);
+      }
+    }
+    
+    renderIcons();
+  </script>
+</body>
+</html>

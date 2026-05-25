@@ -1,0 +1,75 @@
+# Environment files (contain secrets!)
+.env
+.env.local
+.env.production
+tesla-app/.env
+tesla-app/.env.local
+tesla-app/.env.production
+
+# Build artifacts
+tesla-server/tesla-server
+tesla-server/tesla-server.exe
+tesla-server/nohup.out
+tesla-server/tesla-server.log
+.trae/
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Node
+tesla-app/node_modules/
+tesla-app/dist/
+tesla-app/unpackage/
+
+# Frontend sensitive files
+tesla-app/manifest.json
+
+# IDE
+.idea/
+.vscode/
+.hbuilderx/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+nohup.out
+*.out
+tesla-server/*.log
+tesla-server/log/
+
+# Backend build artifacts
+tesla-server/tesla-server
+tesla-server/tesla-server.exe
+tesla-server/__debug_bin*
+tesla-server/tmp/
+tesla-server/temp/
+
+# Frontend build artifacts
+tesla-app/dist/
+tesla-app/unpackage/
+tesla-app/.hbuilderx/
+tesla-app/build/
+
+# Private keys
+*.pem
+!public-key.pem.example
+
+# Database
+*.sql
+!teslaapp-schema.sql
+!tesla-server/database.sql
+node_modules
+unpackage
+.hbuilderx

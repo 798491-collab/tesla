@@ -1,0 +1,311 @@
+@import "./theme.scss";
+$primary-color: #ff5f6d;
+$primary-dark: #e84855;
+$primary-light: rgba(255, 95, 109, 0.08);
+$secondary-color: #ffc371;
+$text-primary: #1a1a2e;
+$text-secondary: #555770;
+$text-light: #8e8ea0;
+$text-white: #ffffff;
+$bg-primary: #f5f6fa;
+$bg-white: #ffffff;
+$bg-dark: #0f0f1a;
+$bg-dark-secondary: #1c1c32;
+$border-color: #eef0f5;
+$border-light: #eef0f5;
+$shadow-sm: 0 1rpx 4rpx rgba(0, 0, 0, 0.04);
+$shadow-md: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 8rpx 32rpx rgba(0, 0, 0, 0.1);
+$radius-sm: 12rpx;
+$radius-md: 20rpx;
+$radius-lg: 28rpx;
+$radius-xl: 36rpx;
+$glass-bg: rgba(255, 255, 255, 0.08);
+$glass-border: rgba(255, 255, 255, 0.12);
+
+page {
+  background-color: var(--bg-page-solid, var(--bg-page));
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.visionpro-theme page,
+.visionpro-theme {
+  background: linear-gradient(180deg, #F5F9FF 0%, #EEF4FF 35%, #E5EEFF 70%, #DCE8FF 100%);
+}
+
+.container {
+  padding: 24rpx;
+}
+
+.card {
+  background: var(--bg-card);
+  border-radius: $radius-lg;
+  padding: 32rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--shadow-card);
+  border: 1rpx solid var(--border-card);
+}
+
+.visionpro-theme .card {
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 28px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+}
+
+.card-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, $primary-color 0%, $primary-dark 100%);
+  color: #ffffff;
+  border-radius: $radius-md;
+  height: 96rpx;
+  line-height: 96rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  text-align: center;
+  border: none;
+  letter-spacing: 2rpx;
+  box-shadow: 0 4rpx 16rpx rgba(255, 95, 109, 0.3);
+
+  &:active {
+    background: linear-gradient(135deg, $primary-dark 0%, darken($primary-dark, 5%) 100%);
+  }
+
+  &[disabled] {
+    background: #d1d5db;
+    color: #9ca3af;
+    box-shadow: none;
+  }
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: $primary-color;
+  border: 2rpx solid $primary-color;
+  border-radius: $radius-md;
+  height: 96rpx;
+  line-height: 92rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 2rpx;
+
+  &:active {
+    background: $primary-light;
+  }
+}
+
+.input-group {
+  margin-bottom: 32rpx;
+
+  .label {
+    font-size: 28rpx;
+    color: $text-secondary;
+    margin-bottom: 12rpx;
+    display: block;
+    font-weight: 500;
+  }
+
+  .input {
+    height: 96rpx;
+    background: var(--bg-input);
+    border-radius: $radius-md;
+    padding: 0 28rpx;
+    font-size: 30rpx;
+    color: var(--text-primary);
+    border: 2rpx solid transparent;
+
+    &:focus {
+      border-color: $primary-color;
+      background: var(--bg-card);
+    }
+  }
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.text-primary {
+  color: $primary-color;
+}
+
+.text-secondary {
+  color: $text-secondary;
+}
+
+.text-light {
+  color: $text-light;
+}
+
+.font-bold {
+  font-weight: 600;
+}
+
+.mt-20 {
+  margin-top: 20rpx;
+}
+
+.mb-20 {
+  margin-bottom: 20rpx;
+}
+
+.p-20 {
+  padding: 20rpx;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60rpx;
+
+  text {
+    margin-left: 16rpx;
+    color: $text-light;
+    font-size: 28rpx;
+  }
+}
+
+.empty {
+  text-align: center;
+  padding: 120rpx 40rpx;
+
+  .empty-icon {
+    margin-bottom: 24rpx;
+    opacity: 0.4;
+  }
+
+  .empty-text {
+    color: $text-light;
+    font-size: 28rpx;
+    line-height: 1.6;
+  }
+}
+
+.dark-page {
+  background: linear-gradient(180deg, $bg-dark 0%, $bg-dark-secondary 100%);
+  height: 100vh;
+  overflow: hidden;
+  color: $text-white;
+}
+
+.glass-card {
+  background: $glass-bg;
+  border: 1rpx solid $glass-border;
+  border-radius: $radius-lg;
+}
+
+.section-title {
+  font-size: 28rpx;
+  color: $text-secondary;
+  font-weight: 500;
+  padding: 24rpx 0 12rpx;
+  letter-spacing: 1rpx;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ==================== 横屏响应式全局样式 ==================== */
+
+/* 横屏基础适配 */
+@media screen and (orientation: landscape) {
+  /* 主容器横屏适配 */
+  .container {
+    max-width: 100%;
+    padding: 20rpx 40rpx;
+  }
+
+  /* 卡片横屏布局 */
+  .card {
+    margin-bottom: 16rpx;
+  }
+
+  /* 横屏时减小字体和间距 */
+  .card-title {
+    font-size: 28rpx;
+    margin-bottom: 16rpx;
+  }
+
+  /* 按钮横屏适配 */
+  .btn-primary,
+  .btn-secondary {
+    height: 80rpx;
+    line-height: 80rpx;
+    font-size: 28rpx;
+  }
+
+  /* 输入框横屏适配 */
+  .input-group {
+    margin-bottom: 20rpx;
+
+    .input {
+      height: 80rpx;
+      font-size: 28rpx;
+    }
+  }
+
+  /* 空状态横屏适配 */
+  .empty {
+    padding: 60rpx 40rpx;
+  }
+}
+
+/* 小屏幕横屏特殊处理 */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  .container {
+    padding: 16rpx 32rpx;
+  }
+
+  .card {
+    padding: 24rpx;
+    margin-bottom: 12rpx;
+  }
+
+  .card-title {
+    font-size: 26rpx;
+    margin-bottom: 12rpx;
+  }
+}

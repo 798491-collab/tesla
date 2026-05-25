@@ -1,0 +1,280 @@
+-- Tesla 管理平台数据库初始化脚本
+-- 数据库: teslaapp
+-- 所有表统一使用 tesla_ 前缀
+
+CREATE DATABASE IF NOT EXISTS teslaapp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE teslaapp;
+
+CREATE TABLE IF NOT EXISTS tesla_users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    nickname VARCHAR(50) DEFAULT '',
+    avatar VARCHAR(255) DEFAULT '',
+    phone VARCHAR(20) DEFAULT '',
+    email VARCHAR(100) DEFAULT '',
+    status TINYINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_username (username),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_user_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    token TEXT NOT NULL,
+    expired_at BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_expired_at (expired_at),
+    FOREIGN KEY (user_id) REFERENCES tesla_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_oauth_accounts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    tesla_uid VARCHAR(64) DEFAULT '' COMMENT 'Tesla 用户唯一ID',
+    access_token TEXT COMMENT '当前 access_token',
+    refresh_token TEXT COMMENT '刷新 token',
+    expires_at BIGINT DEFAULT 0 COMMENT 'Token 过期时间（Unix 时间戳）',
+    granted_scopes VARCHAR(500) DEFAULT '' COMMENT 'OAuth 授权的 scope 列表',
+    token_invalid BOOLEAN DEFAULT FALSE COMMENT 'Token 是否已失效',
+    last_token_refresh_at DATETIME DEFAULT NULL COMMENT '上次刷新时间',
+    last_token_refresh_error VARCHAR(500) DEFAULT '' COMMENT '上次刷新错误',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_tesla_uid (tesla_uid),
+    INDEX idx_token_invalid (token_invalid),
+    FOREIGN KEY (user_id) REFERENCES tesla_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_vehicles (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    tesla_uid VARCHAR(64) DEFAULT '' COMMENT '关联 tesla_oauth_accounts',
+    vin VARCHAR(32) NOT NULL COMMENT 'VIN，仅用于展示',
+    vehicle_tag VARCHAR(64) DEFAULT '' COMMENT 'Fleet API 真正请求ID（id_s）',
+    display_name VARCHAR(64) DEFAULT '',
+    access_type VARCHAR(20) DEFAULT '' COMMENT 'owner / driver',
+    bind_status TINYINT DEFAULT 1,
+    online_state VARCHAR(20) DEFAULT '',
+    virtual_key_status INT DEFAULT 0 COMMENT '0=未配对 1=已配对',
+    virtual_key_paired_at DATETIME DEFAULT NULL,
+    virtual_key_last_check DATETIME DEFAULT NULL,
+    location_authorized BOOLEAN DEFAULT FALSE COMMENT '是否授权vehicle_location',
+    fleet_telemetry_version VARCHAR(32) DEFAULT '' COMMENT 'Fleet Telemetry版本',
+    discounted_device_data BOOLEAN DEFAULT FALSE COMMENT '是否支持低价数据',
+    api_version INT DEFAULT 0,
+    option_codes VARCHAR(500) DEFAULT '' COMMENT 'Tesla车辆配置码',
+    vehicle_image VARCHAR(500) DEFAULT '' COMMENT 'Tesla Compositor车辆图片URL',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_tesla_uid (tesla_uid),
+    INDEX idx_vin (vin),
+    INDEX idx_vehicle_tag (vehicle_tag),
+    INDEX idx_bind_status (bind_status),
+    UNIQUE KEY uk_user_vin (user_id, vin),
+    FOREIGN KEY (user_id) REFERENCES tesla_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_vehicle_state_caches (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    vin VARCHAR(32) NOT NULL,
+    online BOOLEAN DEFAULT FALSE,
+    state VARCHAR(20) DEFAULT '',
+    battery_level INT DEFAULT 0,
+    battery_range_km DOUBLE DEFAULT 0,
+    charging_state VARCHAR(20) DEFAULT '',
+    charge_rate DOUBLE DEFAULT 0,
+    charger_power DOUBLE DEFAULT 0,
+    charger_actual_current DOUBLE DEFAULT 0,
+    charger_voltage INT DEFAULT 0,
+    charge_energy_added DOUBLE DEFAULT 0,
+    speed DOUBLE DEFAULT 0,
+    shift_state VARCHAR(5) DEFAULT '',
+    latitude DOUBLE DEFAULT 0,
+    longitude DOUBLE DEFAULT 0,
+    heading INT DEFAULT 0,
+    odometer_km DOUBLE DEFAULT 0,
+    locked BOOLEAN DEFAULT TRUE,
+    inside_temp DOUBLE DEFAULT 0,
+    outside_temp DOUBLE DEFAULT 0,
+    driver_temp_setting DOUBLE DEFAULT 0,
+    passenger_temp_setting DOUBLE DEFAULT 0,
+    is_ac_on BOOLEAN DEFAULT FALSE,
+    car_version VARCHAR(64) DEFAULT '',
+    tire_pressure_fl DOUBLE DEFAULT 0,
+    tire_pressure_fr DOUBLE DEFAULT 0,
+    tire_pressure_rl DOUBLE DEFAULT 0,
+    tire_pressure_rr DOUBLE DEFAULT 0,
+    sentry_mode BOOLEAN DEFAULT FALSE,
+    door_fl BOOLEAN DEFAULT FALSE,
+    door_fr BOOLEAN DEFAULT FALSE,
+    door_rl BOOLEAN DEFAULT FALSE,
+    door_rr BOOLEAN DEFAULT FALSE,
+    trunk_open BOOLEAN DEFAULT FALSE,
+    frunk_open BOOLEAN DEFAULT FALSE,
+    window_fl BOOLEAN DEFAULT FALSE,
+    window_fr BOOLEAN DEFAULT FALSE,
+    window_rl BOOLEAN DEFAULT FALSE,
+    window_rr BOOLEAN DEFAULT FALSE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_vin (vin)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_trip_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    vin VARCHAR(32) NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME DEFAULT NULL,
+    start_odometer DOUBLE DEFAULT 0,
+    end_odometer DOUBLE DEFAULT 0,
+    distance DOUBLE DEFAULT 0 COMMENT '行驶距离(km)',
+    avg_speed DOUBLE DEFAULT 0 COMMENT '平均速度(km/h)',
+    max_speed DOUBLE DEFAULT 0 COMMENT '最大速度(km/h)',
+    energy_used DOUBLE DEFAULT 0 COMMENT '能耗(kWh)',
+    start_battery_level INT DEFAULT 0 COMMENT '出发SOC',
+    end_battery_level INT DEFAULT 0 COMMENT '到达SOC',
+    drive_duration INT DEFAULT 0 COMMENT '行驶时间（秒）',
+    idle_duration INT DEFAULT 0 COMMENT '堵车/怠速时间（秒）',
+    start_lat DOUBLE DEFAULT 0,
+    start_lng DOUBLE DEFAULT 0,
+    end_lat DOUBLE DEFAULT 0,
+    end_lng DOUBLE DEFAULT 0,
+    start_address VARCHAR(255) DEFAULT '' COMMENT '起点地址',
+    end_address VARCHAR(255) DEFAULT '' COMMENT '终点地址',
+    start_city VARCHAR(100) DEFAULT '' COMMENT '起点城市',
+    end_city VARCHAR(100) DEFAULT '' COMMENT '终点城市',
+    avg_consumption DOUBLE DEFAULT 0 COMMENT '百公里能耗(kWh/100km)',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vin (vin),
+    INDEX idx_start_time (start_time),
+    INDEX idx_vin_time (vin, start_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_trip_points (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    trip_id BIGINT UNSIGNED NOT NULL COMMENT '关联tesla_trip_logs.id',
+    vin VARCHAR(32) NOT NULL,
+    latitude DOUBLE DEFAULT 0,
+    longitude DOUBLE DEFAULT 0,
+    speed DOUBLE DEFAULT 0 COMMENT '速度(km/h)',
+    heading INT DEFAULT 0 COMMENT '航向角度',
+    battery_level INT DEFAULT 0 COMMENT '电量',
+    recorded_at DATETIME NOT NULL COMMENT '记录时间',
+    INDEX idx_trip_id (trip_id),
+    INDEX idx_vin (vin),
+    INDEX idx_recorded_at (recorded_at),
+    FOREIGN KEY (trip_id) REFERENCES tesla_trip_logs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_charging_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    vin VARCHAR(32) NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME DEFAULT NULL,
+    soc_start INT DEFAULT 0 COMMENT '开始电量',
+    soc_end INT DEFAULT 0 COMMENT '结束电量',
+    start_range DOUBLE DEFAULT 0 COMMENT '开始续航(km)',
+    end_range DOUBLE DEFAULT 0 COMMENT '结束续航(km)',
+    charge_kwh DOUBLE DEFAULT 0 COMMENT '充电量(kWh)',
+    energy_added_kwh DOUBLE DEFAULT 0 COMMENT '已充电量(kWh)',
+    max_power DOUBLE DEFAULT 0 COMMENT '最大功率(kW)',
+    average_power_kw DOUBLE DEFAULT 0 COMMENT '平均功率(kW)',
+    peak_power_kw DOUBLE DEFAULT 0 COMMENT '峰值功率(kW)',
+    charge_duration_minutes INT DEFAULT 0 COMMENT '充电时长(分钟)',
+    charge_type VARCHAR(20) DEFAULT '' COMMENT 'AC/DC',
+    is_dc_fast_charge BOOLEAN DEFAULT FALSE COMMENT '是否快充',
+    outside_temp DOUBLE DEFAULT 0 COMMENT '车外温度',
+    battery_temp DOUBLE DEFAULT 0 COMMENT '电池温度',
+    charger_phases INT DEFAULT 0 COMMENT '交流充电相数',
+    location VARCHAR(255) DEFAULT '' COMMENT '经纬度坐标',
+    address VARCHAR(255) DEFAULT '' COMMENT '逆地理编码地址',
+    city VARCHAR(100) DEFAULT '' COMMENT '城市',
+    district VARCHAR(100) DEFAULT '' COMMENT '区县',
+    poi_name VARCHAR(255) DEFAULT '' COMMENT 'POI名称',
+    latitude DOUBLE DEFAULT 0,
+    longitude DOUBLE DEFAULT 0,
+    price_per_kwh DECIMAL(10,4) DEFAULT NULL COMMENT '电价(元/kWh)',
+    total_cost DECIMAL(10,2) DEFAULT NULL COMMENT '总费用(元)',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vin (vin),
+    INDEX idx_start_time (start_time),
+    INDEX idx_charge_type (charge_type),
+    INDEX idx_vin_time (vin, start_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_vehicle_telemetries (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    vin VARCHAR(32) NOT NULL,
+    battery_level INT DEFAULT 0,
+    charging_state VARCHAR(20) DEFAULT '',
+    speed DOUBLE DEFAULT 0,
+    shift_state VARCHAR(5) DEFAULT '',
+    latitude DOUBLE DEFAULT 0,
+    longitude DOUBLE DEFAULT 0,
+    odometer DOUBLE DEFAULT 0,
+    locked BOOLEAN DEFAULT TRUE,
+    inside_temp DOUBLE DEFAULT 0,
+    outside_temp DOUBLE DEFAULT 0,
+    is_ac_on BOOLEAN DEFAULT FALSE,
+    online BOOLEAN DEFAULT FALSE,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vin (vin),
+    INDEX idx_recorded_at (recorded_at),
+    INDEX idx_vin_recorded (vin, recorded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_geo_caches (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    geo_hash VARCHAR(16) UNIQUE NOT NULL COMMENT 'GeoHash，精度7位，约 150m',
+    latitude DOUBLE NOT NULL COMMENT '纬度',
+    longitude DOUBLE NOT NULL COMMENT '经度',
+    address VARCHAR(255) DEFAULT '' COMMENT '逆地理编码地址',
+    city VARCHAR(100) DEFAULT '' COMMENT '城市',
+    district VARCHAR(100) DEFAULT '' COMMENT '区县',
+    poi_name VARCHAR(255) DEFAULT '' COMMENT 'POI名称',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_geo_hash (geo_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_vehicle_command_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    vin VARCHAR(32) NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    command VARCHAR(64) NOT NULL COMMENT '命令名称',
+    success BOOLEAN DEFAULT FALSE COMMENT '是否成功',
+    error_message VARCHAR(500) DEFAULT '' COMMENT '错误信息',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vin (vin),
+    INDEX idx_user_id (user_id),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tesla_ai_analyses (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+    vin VARCHAR(32) NOT NULL COMMENT '车辆VIN',
+    type VARCHAR(32) NOT NULL COMMENT '分析类型: trip/charging/vehicle',
+    ref_id VARCHAR(64) NOT NULL COMMENT '引用ID',
+    prompt TEXT COMMENT '发送给AI的提示词',
+    result LONGTEXT NOT NULL COMMENT 'AI分析结果',
+    summary VARCHAR(500) DEFAULT '' COMMENT 'AI分析摘要',
+    model VARCHAR(64) DEFAULT '' COMMENT '使用的AI模型',
+    tokens_in INT DEFAULT 0 COMMENT '输入Token数',
+    tokens_out INT DEFAULT 0 COMMENT '输出Token数',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vin (vin),
+    INDEX idx_user_id (user_id),
+    INDEX idx_type (type),
+    INDEX idx_ref_id (ref_id),
+    INDEX idx_vin_type_ref (vin, type, ref_id),
+    INDEX idx_created_at (created_at),
+    FOREIGN KEY (user_id) REFERENCES tesla_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

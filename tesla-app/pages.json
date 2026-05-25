@@ -1,0 +1,193 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^Icon$": "@/components/Icon/Icon.vue"
+    }
+  },
+  "pages": [
+    {
+      "path": "pages/dashboard/dashboard",
+      "style": {
+        "navigationBarTitleText": "Tesla管理平台",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "Tesla管理平台",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/dashboard/instrument",
+      "style": {
+        "navigationBarTitleText": "车辆仪表盘",
+        "navigationStyle": "custom",
+        "pageOrientation": "landscape"
+      }
+    },
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/register/register",
+      "style": {
+        "navigationBarTitleText": "注册",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/bind/bind",
+      "style": {
+        "navigationBarTitleText": "绑定车辆",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/callback/callback",
+      "style": {
+        "navigationBarTitleText": "授权回调",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/vehicle/vehicle",
+      "style": {
+        "navigationBarTitleText": "我的车辆",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/vehicle/detail",
+      "style": {
+        "navigationBarTitleText": "车辆详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/vehicle/location",
+      "style": {
+        "navigationBarTitleText": "车辆位置",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/control/control",
+      "style": {
+        "navigationBarTitleText": "车辆控制",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/charging/charging",
+      "style": {
+        "navigationBarTitleText": "充电记录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/charging/month",
+      "style": {
+        "navigationBarTitleText": "月度充电",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/charging/map",
+      "style": {
+        "navigationBarTitleText": "充电地图",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/trip/trip",
+      "style": {
+        "navigationBarTitleText": "行驶记录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/trip/month",
+      "style": {
+        "navigationBarTitleText": "月度行驶",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/trip/route",
+      "style": {
+        "navigationBarTitleText": "行驶轨迹",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationBarTitleText": "个人中心",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/profile/edit",
+      "style": {
+        "navigationBarTitleText": "编辑资料",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/profile/change-password",
+      "style": {
+        "navigationBarTitleText": "修改密码",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/profile/about",
+      "style": {
+        "navigationBarTitleText": "关于",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/debug/ble",
+      "style": {
+        "navigationBarTitleText": "BLE调试",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/ai/trip",
+      "style": {
+        "navigationBarTitleText": "行车AI分析",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/ai/charging",
+      "style": {
+        "navigationBarTitleText": "充电AI分析",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/ai/vehicle",
+      "style": {
+        "navigationBarTitleText": "车辆AI分析报告",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "Tesla管理平台",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#060B14",
+    "navigationStyle": "custom"
+  }
+}
