@@ -144,6 +144,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, onActivated } from 'vue'
 import { getVehicleState } from '@/api/vehicle.js'
 import { useVehicleStore } from '@/store/vehicle'
+import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
 import { get } from '@/utils/request.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
@@ -158,11 +159,42 @@ const warningColor = computed(() => themeStore.colors.warning)
 const infoBlueColor = computed(() => themeStore.colors.info)
 const aiColor = computed(() => themeStore.colors.ai)
 
+const vehicleDataStore = useVehicleData()
+const vehicleWSData = computed(() => vehicleDataStore.data)
+const vehicleWSStateOutput = computed(() => vehicleDataStore.stateOutput)
+
 watch(() => themeStore.resolvedTheme, (theme) => {
   if ((theme === 'dark' || theme === 'visionpro') && mapStyle.value === 'standard') {
     mapStyle.value = 'dark'
   }
 }, { immediate: true })
+
+watch(() => vehicleWSData.value, (wsData) => {
+  if (!wsData || !Object.keys(wsData).length) return
+  const latitude = wsData.latitude
+  const longitude = wsData.longitude
+  if (latitude && longitude && latitude !== 0 && longitude !== 0) {
+    locationAuthorized.value = true
+    state.value = {
+      ...state.value,
+      latitude,
+      longitude,
+      heading: wsData.heading ?? state.value.heading,
+      speed: wsData.speed ?? state.value.speed,
+      gear: wsData.gear ?? state.value.gear,
+      driving: wsData.driving ?? state.value.driving,
+      charging: wsData.charging ?? state.value.charging,
+      soc: wsData.soc ?? state.value.soc,
+      range_km: wsData.range_km ?? state.value.range_km,
+      online: isVehicleOnline(vehicleWSStateOutput.value),
+      state: vehicleWSStateOutput.value?.state?.online_state || state.value.state,
+      updated_at: new Date().toISOString()
+    }
+  }
+  if (vehicleWSStateOutput.value) {
+    stateOutput.value = vehicleWSStateOutput.value
+  }
+}, { deep: true })
 
 const vin = ref('')
 const state = ref({})
@@ -234,6 +266,7 @@ onMounted(() => {
     vin.value = vehicleStore.currentVehicle?.vin || ''
   }
   if (vin.value) {
+    initVehicleData(vin.value)
     loadState()
     loadAuthStatus()
     startAutoRefresh()
@@ -242,6 +275,7 @@ onMounted(() => {
 
 onActivated(() => {
   if (vin.value) {
+    initVehicleData(vin.value)
     loadState()
     loadAuthStatus()
     startAutoRefresh()
@@ -249,6 +283,7 @@ onActivated(() => {
 })
 
 onUnmounted(() => {
+  destroyVehicleData()
   if (refreshTimer) {
     clearInterval(refreshTimer)
   }

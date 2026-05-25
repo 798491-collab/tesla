@@ -39,9 +39,9 @@ type pollConfig struct {
 var pollConfigs = map[pollState]pollConfig{
 	pollSleeping:  {Interval: 90 * time.Second, UseLightweight: true},
 	pollWaking:    {Interval: 5 * time.Second, UseLightweight: false},
-	pollOnline:    {Interval: 25 * time.Second, UseLightweight: false},
-	pollDriving:   {Interval: 2 * time.Second, UseLightweight: false},
-	pollCharging:  {Interval: 10 * time.Second, UseLightweight: false},
+	pollOnline:    {Interval: 15 * time.Second, UseLightweight: false},
+	pollDriving:   {Interval: 1 * time.Second, UseLightweight: false},
+	pollCharging:  {Interval: 5 * time.Second, UseLightweight: false},
 	pollClimateOn: {Interval: 5 * time.Second, UseLightweight: false},
 	pollUpdating:  {Interval: 30 * time.Second, UseLightweight: false},
 	pollOffline:   {Interval: 90 * time.Second, UseLightweight: true},
@@ -54,7 +54,7 @@ const (
 	sleepHintThreshold     = 3
 	idleTimeout            = 10 * time.Minute
 	onlineLockDuration     = 30 * time.Second
-	minVehicleDataInterval = 3 * time.Second
+	minVehicleDataInterval = 1 * time.Second
 )
 
 type VehicleWorker struct {

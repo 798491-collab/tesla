@@ -324,10 +324,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onShow, onHide } from '@dcloudio/uni-app'
 import { useVehicleStore } from '@/store/vehicle'
 import { useThemeStore } from '@/store/theme'
-import { useVehicleData } from '@/utils/vehicle-data'
+import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
 import { getOnlineStateLabel, getOnlineStateColor } from '@/utils/vehicle-state'
 import { getLatestAnalysis, triggerVehicleAnalysis } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
@@ -440,7 +441,24 @@ onMounted(() => {
   if (!currentVehicle.value) {
     uni.navigateBack()
   }
+  if (currentVehicle.value?.vin) {
+    initVehicleData(currentVehicle.value.vin)
+  }
   loadAIAnalysis()
+})
+
+onShow(() => {
+  if (currentVehicle.value?.vin) {
+    initVehicleData(currentVehicle.value.vin)
+  }
+})
+
+onHide(() => {
+  destroyVehicleData()
+})
+
+onUnmounted(() => {
+  destroyVehicleData()
 })
 </script>
 

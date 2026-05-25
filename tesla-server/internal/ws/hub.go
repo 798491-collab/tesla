@@ -200,3 +200,13 @@ func BroadcastPollState(vin string, pollState string) {
 		})
 	}
 }
+
+func BroadcastCommandState(vin string, cmdState string, command string, latencyMs int64) {
+	if DefaultHub != nil {
+		DefaultHub.BroadcastToVIN(vin, "command_state", map[string]interface{}{
+			"command_state": cmdState,
+			"last_command":  command,
+			"latency_ms":    latencyMs,
+		})
+	}
+}

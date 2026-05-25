@@ -298,7 +298,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import { getUserVehicles, getVehicleState, wakeVehicle, getPairingURL, getFleetStatus } from '@/api/vehicle.js'
 import {
@@ -315,6 +315,8 @@ import {
 } from '@/api/control.js'
 import Icon from '@/components/Icon/Icon.vue'
 import { useThemeStore } from '@/store/theme'
+import { useVehicleStore } from '@/store/vehicle'
+import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
 import { getOnlineStateLabel, getOnlineStateColor, canControlVehicle, isVehicleOnline, isVehicleCharging } from '@/utils/vehicle-state'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
@@ -325,10 +327,10 @@ const primaryColor = computed(() => themeStore.colors.primary)
 const headerIconColor = computed(() => themeStore.colors.headerIcon)
 const inactiveIconColorLight = computed(() => themeStore.colors.inactiveIconLight)
 
+const vehicleStore = useVehicleStore()
+const vehicleDataStore = useVehicleData()
 const vehicles = ref([])
 const vehicleIndex = ref(0)
-const vehicleOnline = ref(false)
-const vehicleStateInfo = ref(null)
 let statusTimer = null
 
 const showPairingModal = ref(false)
@@ -348,72 +350,61 @@ const seatNames = ['主驾', '副驾', '后排左', '后排中', '后排右', '�
 const vehicleNames = computed(() => vehicles.value.map(v => v.vehicle_name))
 const selectedVIN = computed(() => vehicles.value[vehicleIndex.value]?.vin)
 
-const locked = computed(() => vehicleStateInfo.value?.locked !== false)
-const climateOn = computed(() => vehicleStateInfo.value?.is_ac_on)
-const trunkOpen = computed(() => vehicleStateInfo.value?.trunk_open)
-const frunkOpen = computed(() => vehicleStateInfo.value?.frunk_open)
-const sentryOn = computed(() => vehicleStateInfo.value?.sentry_mode)
-const charging = computed(() => vehicleStateInfo.value?.charging || isVehicleCharging(vehicleStateInfo.value?.state_output))
-const chargePortOpen = computed(() => vehicleStateInfo.value?.charge_port_door_open)
-const insideTemp = computed(() => vehicleStateInfo.value?.inside_temp)
+const vehicleData = computed(() => vehicleDataStore.data)
+const stateOutput = computed(() => vehicleDataStore.stateOutput)
+const vehicleOnline = computed(() => isVehicleOnline(stateOutput.value))
+
+const locked = computed(() => vehicleData.value?.locked !== false)
+const climateOn = computed(() => vehicleData.value?.is_ac_on)
+const trunkOpen = computed(() => vehicleData.value?.trunk_open)
+const frunkOpen = computed(() => vehicleData.value?.frunk_open)
+const sentryOn = computed(() => vehicleData.value?.sentry_mode)
+const charging = computed(() => vehicleData.value?.charging || isVehicleCharging(stateOutput.value))
+const chargePortOpen = computed(() => vehicleData.value?.charge_port_door_open)
+const insideTemp = computed(() => vehicleData.value?.inside_temp)
 const seatHeaterOn = computed(() => {
-  const s = vehicleStateInfo.value?.seat_heater
+  const s = vehicleData.value?.seat_heater
   if (!s) return false
   return Object.values(s).some(v => v > 0)
 })
-const steeringHeaterOn = computed(() => vehicleStateInfo.value?.steering_wheel_heater)
+const steeringHeaterOn = computed(() => vehicleData.value?.steering_wheel_heater)
 
-const stateText = computed(() => getOnlineStateLabel(vehicleStateInfo.value?.state_output))
-
-const stateColor = computed(() => getOnlineStateColor(vehicleStateInfo.value?.state_output))
+const stateText = computed(() => getOnlineStateLabel(stateOutput.value))
+const stateColor = computed(() => getOnlineStateColor(stateOutput.value))
 
 onMounted(() => { loadVehicles() })
 
 onShow(() => {
-  if (vehicles.value.length > 0) {
-    checkVehicleStatus()
-    startStatusPolling()
+  if (vehicles.value.length > 0 && selectedVIN.value) {
+    initVehicleData(selectedVIN.value)
   }
 })
 
 onHide(() => {
-  if (statusTimer) { clearInterval(statusTimer); statusTimer = null }
+  destroyVehicleData()
 })
 
 onUnmounted(() => {
-  if (statusTimer) { clearInterval(statusTimer) }
+  destroyVehicleData()
+})
+
+watch(() => selectedVIN.value, (newVIN) => {
+  if (newVIN) {
+    initVehicleData(newVIN)
+  }
 })
 
 const loadVehicles = () => {
   getUserVehicles().then((res) => {
     vehicles.value = res.data || []
-    if (vehicles.value.length > 0) {
-      checkVehicleStatus()
-      startStatusPolling()
+    if (vehicles.value.length > 0 && selectedVIN.value) {
+      initVehicleData(selectedVIN.value)
     }
   })
 }
 
-const checkVehicleStatus = () => {
-  if (!selectedVIN.value) return
-  getVehicleState(selectedVIN.value).then((res) => {
-    const state = res.data
-    vehicleStateInfo.value = state
-    vehicleOnline.value = isVehicleOnline(state?.state_output)
-  }).catch(() => {
-    vehicleOnline.value = false
-    vehicleStateInfo.value = null
-  })
-}
-
-const startStatusPolling = () => {
-  if (statusTimer) { clearInterval(statusTimer) }
-  statusTimer = setInterval(() => { checkVehicleStatus() }, 10000)
-}
-
 const onVehicleChange = (e) => {
   vehicleIndex.value = e.detail.value
-  checkVehicleStatus()
 }
 
 const onSeatChange = (e) => {
@@ -474,17 +465,12 @@ const sendCommand = (command) => {
           return
         }
         setTimeout(() => {
-          getVehicleState(selectedVIN.value).then((res) => {
-            if (res.data?.online) {
-              vehicleOnline.value = true
-              uni.hideLoading()
-              uni.showToast({ title: '车辆已上线', icon: 'success' })
-            } else {
-              checkOnline(retries - 1)
-            }
-          }).catch(() => {
+          if (vehicleOnline.value) {
+            uni.hideLoading()
+            uni.showToast({ title: '车辆已上线', icon: 'success' })
+          } else {
             checkOnline(retries - 1)
-          })
+          }
         }, 3000)
       }
       checkOnline(10)
@@ -522,15 +508,29 @@ const sendCommand = (command) => {
     ? fn()
     : fn(selectedVIN.value)
 
-  Promise.resolve(promise).then(() => {
+  Promise.resolve(promise).then((res) => {
     uni.hideLoading()
-    uni.showToast({ title: `${commandNames[command] || '操作'}成功`, icon: 'success' })
-    setTimeout(() => { checkVehicleStatus() }, 1000)
+    const status = res?.status || res?.data?.result
+    if (status === 'waking') {
+      uni.showToast({ title: '车辆唤醒中，请稍候...', icon: 'none', duration: 3000 })
+    } else if (status === 'pending') {
+      uni.showToast({ title: '命令已发送，等待确认...', icon: 'none', duration: 3000 })
+    } else {
+      uni.showToast({ title: `${commandNames[command] || '操作'}成功`, icon: 'success' })
+    }
   }).catch((err) => {
     uni.hideLoading()
     const errMsg = (err.message || '').toLowerCase()
     if (errMsg.includes('public key not paired') || errMsg.includes('virtual key not paired')) {
       showPairingGuide(selectedVIN.value)
+      return
+    }
+    if (errMsg.includes('waking') || errMsg.includes('vehicle waking')) {
+      uni.showToast({ title: '车辆唤醒中，命令将自动重试', icon: 'none', duration: 3000 })
+      return
+    }
+    if (errMsg.includes('pending') || errMsg.includes('timeout')) {
+      uni.showToast({ title: '命令已发送，等待车辆确认', icon: 'none', duration: 3000 })
       return
     }
     uni.showToast({ title: err.message || `${commandNames[command] || '操作'}失败`, icon: 'none' })
@@ -540,15 +540,25 @@ const sendCommand = (command) => {
 const confirmSetTemps = () => {
   showTempModal.value = false
   uni.showLoading({ title: '设置温度中...' })
-  setTemps(selectedVIN.value, tempDriver.value, tempPassenger.value).then(() => {
+  setTemps(selectedVIN.value, tempDriver.value, tempPassenger.value).then((res) => {
     uni.hideLoading()
-    uni.showToast({ title: '温度设置成功', icon: 'success' })
-    setTimeout(() => { checkVehicleStatus() }, 1000)
+    const status = res?.status
+    if (status === 'waking') {
+      uni.showToast({ title: '车辆唤醒中...', icon: 'none', duration: 3000 })
+    } else if (status === 'pending') {
+      uni.showToast({ title: '命令已发送，等待确认...', icon: 'none', duration: 3000 })
+    } else {
+      uni.showToast({ title: '温度设置成功', icon: 'success' })
+    }
   }).catch((err) => {
     uni.hideLoading()
     const errMsg = (err.message || '').toLowerCase()
     if (errMsg.includes('public key not paired') || errMsg.includes('virtual key not paired')) {
       showPairingGuide(selectedVIN.value)
+      return
+    }
+    if (errMsg.includes('waking')) {
+      uni.showToast({ title: '车辆唤醒中，命令将自动重试', icon: 'none', duration: 3000 })
       return
     }
     uni.showToast({ title: err.message || '设置失败', icon: 'none' })
@@ -558,15 +568,25 @@ const confirmSetTemps = () => {
 const confirmSeatHeater = () => {
   showSeatModal.value = false
   uni.showLoading({ title: '设置座椅加热...' })
-  remoteSeatHeater(selectedVIN.value, seatIndex.value, seatLevel.value).then(() => {
+  remoteSeatHeater(selectedVIN.value, seatIndex.value, seatLevel.value).then((res) => {
     uni.hideLoading()
-    uni.showToast({ title: '座椅加热设置成功', icon: 'success' })
-    setTimeout(() => { checkVehicleStatus() }, 1000)
+    const status = res?.status
+    if (status === 'waking') {
+      uni.showToast({ title: '车辆唤醒中...', icon: 'none', duration: 3000 })
+    } else if (status === 'pending') {
+      uni.showToast({ title: '命令已发送，等待确认...', icon: 'none', duration: 3000 })
+    } else {
+      uni.showToast({ title: '座椅加热设置成功', icon: 'success' })
+    }
   }).catch((err) => {
     uni.hideLoading()
     const errMsg = (err.message || '').toLowerCase()
     if (errMsg.includes('public key not paired') || errMsg.includes('virtual key not paired')) {
       showPairingGuide(selectedVIN.value)
+      return
+    }
+    if (errMsg.includes('waking')) {
+      uni.showToast({ title: '车辆唤醒中，命令将自动重试', icon: 'none', duration: 3000 })
       return
     }
     uni.showToast({ title: err.message || '设置失败', icon: 'none' })

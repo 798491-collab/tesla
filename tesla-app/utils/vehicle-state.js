@@ -1,7 +1,12 @@
 const ONLINE_STATE_MAP = {
-  online:  { label: '在线',   color: '#5BE7C4', icon: 'Wifi',    markerColor: '#52c41a', vpColor: '#5EEAD4' },
-  asleep:  { label: '休眠中', color: '#7C879B', icon: 'Moon',    markerColor: '#fa8c16', vpColor: '#94A3B8' },
-  offline: { label: '离线',   color: '#64748B', icon: 'WifiOff', markerColor: '#999999', vpColor: '#CBD5E1' },
+  online:     { label: '在线',   color: '#5BE7C4', icon: 'Wifi',    markerColor: '#52c41a', vpColor: '#5EEAD4' },
+  asleep:     { label: '休眠中', color: '#7C879B', icon: 'Moon',    markerColor: '#fa8c16', vpColor: '#94A3B8' },
+  offline:    { label: '离线',   color: '#64748B', icon: 'WifiOff', markerColor: '#999999', vpColor: '#CBD5E1' },
+  in_service: { label: '维修中', color: '#fbbf24', icon: 'Wrench',  markerColor: '#fa8c16', vpColor: '#FFB86B' },
+  waking:     { label: '唤醒中', color: '#60a5fa', icon: 'Zap',     markerColor: '#60a5fa', vpColor: '#0F172A' },
+  driving:    { label: '行驶中', color: '#5BE7C4', icon: 'CarSport', markerColor: '#52c41a', vpColor: '#5EEAD4' },
+  charging:   { label: '充电中', color: '#5BE7C4', icon: 'Battery', markerColor: '#52c41a', vpColor: '#FFB86B' },
+  climate_on: { label: '空调运行', color: '#60a5fa', icon: 'Thermometer', markerColor: '#60a5fa', vpColor: '#0F172A' },
 }
 
 const DRIVE_STATE_MAP = {
@@ -121,12 +126,12 @@ export function getRefreshInterval(stateOutput) {
 
 export function isVehicleOnline(stateOutput) {
   const s = stateOutput?.state?.online_state
-  return s && s !== 'offline'
+  return s && s !== 'offline' && s !== 'unknown'
 }
 
 export function canControlVehicle(stateOutput) {
   const s = stateOutput?.state?.online_state
-  return s === 'online'
+  return s === 'online' || s === 'driving' || s === 'charging' || s === 'climate_on' || s === 'waking'
 }
 
 export function isVehicleDriving(stateOutput) {

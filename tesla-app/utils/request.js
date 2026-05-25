@@ -28,11 +28,15 @@ const request = (options) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           if (res.data && res.data.code === 200) {
             resolve(res.data)
+          } else if (res.data && res.data.code === 202) {
+            resolve(res.data)
           } else if (res.data && res.data.code === 401) {
             handleUnauthorized()
             setTimeout(() => {
               reject(new Error('登录已过期'))
             }, 1000)
+          } else if (res.data && res.data.code === 403) {
+            reject(new Error(res.data.message || '权限不足'))
           } else if (res.data && res.data.code !== undefined) {
             reject(new Error(res.data.message || '请求失败'))
           } else {

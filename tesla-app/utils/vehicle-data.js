@@ -5,7 +5,9 @@ import { wsConnect, wsDisconnect, wsOn, wsOff, wsSwitchVIN, wsIsConnected } from
 import { getRefreshInterval } from './vehicle-state.js'
 
 const EMA_ALPHA = 0.3
+const EMA_ALPHA_FAST = 0.6
 const EMA_FIELDS = ['speed', 'inside_temp', 'outside_temp', 'charge_power', 'range_km', 'charge_amps', 'soc']
+const EMA_FAST_FIELDS = ['speed']
 
 const vehicleStore = reactive({
   data: {},
@@ -17,7 +19,10 @@ const vehicleStore = reactive({
   loading: false,
   error: null,
   vin: '',
-  pollState: 'sleeping'
+  pollState: 'sleeping',
+  commandState: 'idle',
+  lastCommand: '',
+  commandLatencyMs: 0
 })
 
 let fallbackTimer = null
@@ -53,10 +58,11 @@ function applyEMA(rawData) {
     if (smoothed[field] !== undefined && smoothed[field] !== null) {
       const current = Number(smoothed[field])
       if (isNaN(current)) continue
+      const alpha = EMA_FAST_FIELDS.includes(field) ? EMA_ALPHA_FAST : EMA_ALPHA
       if (emaState[field] === undefined) {
         emaState[field] = current
       } else {
-        emaState[field] = emaState[field] * (1 - EMA_ALPHA) + current * EMA_ALPHA
+        emaState[field] = emaState[field] * (1 - alpha) + current * alpha
       }
       if (field === 'speed') {
         smoothed[field] = Math.round(emaState[field] * 10) / 10
@@ -112,6 +118,7 @@ function startWSStream(vin) {
   wsOn('vehicle_state', onWSVehicleState)
   wsOn('online_state', onWSOnlineState)
   wsOn('poll_state', onWSPollState)
+  wsOn('command_state', onWSCommandState)
   wsOn('open', onWSOpen)
   wsOn('close', onWSClose)
 
@@ -122,6 +129,7 @@ function stopWSStream() {
   wsOff('vehicle_state', onWSVehicleState)
   wsOff('online_state', onWSOnlineState)
   wsOff('poll_state', onWSPollState)
+  wsOff('command_state', onWSCommandState)
   wsOff('open', onWSOpen)
   wsOff('close', onWSClose)
   wsDisconnect()
@@ -130,6 +138,20 @@ function stopWSStream() {
 function onWSVehicleState(data) {
   const smoothed = applyEMA(data)
   mergeData(smoothed)
+  if (data.gear) vehicleStore.data.gear = data.gear
+  if (data.charging !== undefined) vehicleStore.data.charging = data.charging
+  if (data.locked !== undefined) vehicleStore.data.locked = data.locked
+  if (data.door_open !== undefined) vehicleStore.data.door_open = data.door_open
+  if (data.trunk_open !== undefined) vehicleStore.data.trunk_open = data.trunk_open
+  if (data.frunk_open !== undefined) vehicleStore.data.frunk_open = data.frunk_open
+  if (data.sentry_mode !== undefined) vehicleStore.data.sentry_mode = data.sentry_mode
+  if (data.is_ac_on !== undefined) vehicleStore.data.is_ac_on = data.is_ac_on
+  if (data.charge_port_door_open !== undefined) vehicleStore.data.charge_port_door_open = data.charge_port_door_open
+  if (data.windows_open !== undefined) vehicleStore.data.windows_open = data.windows_open
+  if (data.driving !== undefined) vehicleStore.data.driving = data.driving
+  if (data.state_output) {
+    vehicleStore.stateOutput = data.state_output
+  }
   vehicleStore.source = 'ws'
   stopFallbackPolling()
 }
@@ -147,6 +169,25 @@ function onWSOnlineState(data) {
 function onWSPollState(data) {
   if (data.poll_state) {
     vehicleStore.pollState = data.poll_state
+  }
+}
+
+function onWSCommandState(data) {
+  if (data.command_state) {
+    vehicleStore.commandState = data.command_state
+  }
+  if (data.last_command) {
+    vehicleStore.lastCommand = data.last_command
+  }
+  if (data.latency_ms !== undefined) {
+    vehicleStore.commandLatencyMs = data.latency_ms
+  }
+  if (data.command_state === 'success' || data.command_state === 'failed') {
+    setTimeout(() => {
+      if (vehicleStore.commandState === data.command_state) {
+        vehicleStore.commandState = 'idle'
+      }
+    }, 3000)
   }
 }
 

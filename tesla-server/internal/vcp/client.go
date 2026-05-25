@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"tesla-server/internal/database"
 	"tesla-server/internal/fleet"
 	"tesla-server/internal/polling"
 	"tesla-server/internal/redis"
+	"tesla-server/internal/state"
 	"tesla-server/internal/vehicle"
+	"tesla-server/internal/ws"
 	"tesla-server/models"
 	"time"
 
@@ -20,8 +23,65 @@ type CommandRequest struct {
 	Token string `json:"token"`
 }
 
-// checkVirtualKey 检查虚拟钥匙是否已配对
-// 所有 VCP 命令都需要虚拟钥匙配对，否则 Tesla 会返回 "public key not paired"
+type CommandCapability string
+
+const (
+	CommandReady       CommandCapability = "ready"
+	CommandWakeNeeded  CommandCapability = "wake_needed"
+	CommandUnavailable CommandCapability = "unavailable"
+)
+
+var wakeRequiredErrors = []string{
+	"vehicle unavailable",
+	"vehicle asleep",
+	"could_not_wake_buses",
+	"upstream vehicle disconnected",
+	"vehicle is offline",
+}
+
+var vcpKeyErrors = []string{
+	"public key not paired",
+	"virtual key not paired",
+	"vcp required",
+	"signature verification failed",
+	"invalid signature",
+	"missing shared key",
+}
+
+func IsWakeRequired(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, e := range wakeRequiredErrors {
+		if strings.Contains(msg, e) {
+			return true
+		}
+	}
+	return false
+}
+
+func IsVCPKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, e := range vcpKeyErrors {
+		if strings.Contains(msg, e) {
+			return true
+		}
+	}
+	return false
+}
+
+func IsTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
+}
+
 func checkVirtualKey(vin string) error {
 	v, err := vehicle.GetVehicleByVIN(vin)
 	if err != nil {
@@ -59,40 +119,86 @@ func checkVirtualKey(vin string) error {
 	return nil
 }
 
-// wakeVehicleIfNeeded 检查车辆状态，如离线则唤醒
-// wake_up 限制：5 分钟最多 1 次（通过 Redis 锁控制）
-func wakeVehicleIfNeeded(vin string) error {
+func getCommandCapability(vin string) CommandCapability {
 	var online bool
 	if err := redis.Get(fmt.Sprintf("tesla:vehicle:%s:online", vin), &online); err == nil && online {
-		return nil
+		return CommandReady
 	}
 
-	mapping, err := vehicle.GetVehicleMapping(vin)
-	if err != nil {
-		return fmt.Errorf("vehicle not found: %s", vin)
-	}
-
-	log.Printf("[VCP] Vehicle %s appears offline, sending wake command...", vin)
-
-	if err := fleet.WakeUp(mapping.AccessToken, mapping.VehicleTag); err != nil {
-		return fmt.Errorf("failed to wake vehicle: %v", err)
-	}
-
-	log.Printf("[VCP] Wake command sent, waiting for vehicle to come online...")
-	for i := 0; i < 15; i++ {
-		time.Sleep(2 * time.Second)
-		data, err := fleet.GetVehicleState(mapping.AccessToken, mapping.VehicleTag)
-		if err == nil && data.Online {
-			log.Printf("[VCP] Vehicle %s is now online", vin)
-			return nil
+	var pollingState string
+	if err := redis.Get(fmt.Sprintf("tesla:polling:%s", vin), &pollingState); err == nil {
+		if pollingState == "online" || pollingState == "driving" || pollingState == "charging" || pollingState == "climate_on" {
+			return CommandReady
 		}
 	}
 
-	return fmt.Errorf("vehicle did not come online after wake command")
+	lastSuccessKey := fmt.Sprintf("tesla:vehicle:%s:last_success", vin)
+	var lastSuccess int64
+	if err := redis.Get(lastSuccessKey, &lastSuccess); err == nil {
+		if time.Since(time.Unix(lastSuccess, 0)) < 10*time.Minute {
+			return CommandWakeNeeded
+		}
+	}
+
+	return CommandUnavailable
 }
 
-// sendCommand 发送控制命令（带唤醒检查和限流）
-// command 限制：最低间隔 2 秒
+func wakeVehicleAsync(vin string, command string, body interface{}) {
+	log.Printf("[VCP] Starting async wake for %s after command '%s' failed", vin, command)
+
+	mapping, err := vehicle.GetVehicleMapping(vin)
+	if err != nil {
+		log.Printf("[VCP] Wake failed for %s: mapping error: %v", vin, err)
+		state.RecordCommandResult(vin, false)
+		broadcastCommandState(vin, "failed", command, 0)
+		return
+	}
+
+	if err := fleet.WakeUp(mapping.AccessToken, mapping.VehicleTag); err != nil {
+		log.Printf("[VCP] Wake command failed for %s: %v", vin, err)
+		state.RecordCommandResult(vin, false)
+		broadcastCommandState(vin, "failed", command, 0)
+		return
+	}
+
+	log.Printf("[VCP] Wake command sent for %s, waiting for vehicle to come online...", vin)
+	for i := 0; i < 10; i++ {
+		time.Sleep(3 * time.Second)
+		data, err := fleet.GetVehicleState(mapping.AccessToken, mapping.VehicleTag)
+		if err == nil && data.Online {
+			log.Printf("[VCP] Vehicle %s is now online, retrying command '%s'", vin, command)
+			accessToken, err := vehicle.GetValidAccessToken(vin)
+			if err != nil {
+				state.RecordCommandResult(vin, false)
+				broadcastCommandState(vin, "failed", command, 0)
+				return
+			}
+			resp, retryErr := fleet.SendCommand(accessToken, vin, command, body)
+			if retryErr != nil {
+				log.Printf("[VCP] Retry command '%s' failed for %s: %v", command, vin, retryErr)
+				state.RecordCommandResult(vin, false)
+				broadcastCommandState(vin, "failed", command, 0)
+			} else {
+				log.Printf("[VCP] Retry command '%s' succeeded for %s", command, vin)
+				state.RecordCommandResult(vin, true)
+				broadcastCommandState(vin, "success", command, 0)
+				logCommand(vin, command, true, "retry_after_wake")
+				_ = resp
+			}
+			polling.SignalActivity(vin)
+			return
+		}
+	}
+
+	log.Printf("[VCP] Vehicle %s did not come online after wake", vin)
+	state.RecordCommandResult(vin, false)
+	broadcastCommandState(vin, "failed", command, 0)
+}
+
+func broadcastCommandState(vin string, cmdState string, command string, latencyMs int64) {
+	ws.BroadcastCommandState(vin, cmdState, command, latencyMs)
+}
+
 func sendCommand(vin, command string, body interface{}) (*fleet.CommandResponse, error) {
 	accessToken, err := vehicle.GetValidAccessToken(vin)
 	if err != nil {
@@ -103,22 +209,79 @@ func sendCommand(vin, command string, body interface{}) (*fleet.CommandResponse,
 		return nil, err
 	}
 
-	if command != "honk_horn" && command != "flash_lights" {
-		if err := wakeVehicleIfNeeded(vin); err != nil {
-			log.Printf("[VCP] Wake failed for %s: %v, attempting command anyway", vin, err)
-		}
+	capability := getCommandCapability(vin)
+	log.Printf("[VCP] Command '%s' for %s, capability: %s", command, vin, capability)
+
+	state.RecordCommandStart(vin, command)
+	broadcastCommandState(vin, "sending", command, 0)
+
+	resp, err := fleet.SendCommand(accessToken, vin, command, body)
+
+	if err == nil {
+		state.RecordCommandResult(vin, true)
+		broadcastCommandState(vin, "success", command, 0)
+		logCommand(vin, command, true, "")
+
+		polling.SignalActivity(vin)
+		go func() {
+			time.Sleep(3 * time.Second)
+			polling.SignalActivity(vin)
+		}()
+
+		return resp, nil
 	}
 
-	logCommand(vin, command, true, "")
+	if IsVCPKeyError(err) {
+		state.RecordCommandResult(vin, false)
+		broadcastCommandState(vin, "failed", command, 0)
+		return nil, err
+	}
 
-	polling.SignalActivity(vin)
+	if IsTimeoutError(err) {
+		log.Printf("[VCP] Command '%s' timeout for %s, treating as pending", command, vin)
+		broadcastCommandState(vin, "pending", command, 0)
 
-	return fleet.SendCommand(accessToken, vin, command, body)
+		go func() {
+			time.Sleep(5 * time.Second)
+			polling.SignalActivity(vin)
+		}()
+
+		return nil, &CommandPendingError{Command: command, VIN: vin}
+	}
+
+	if IsWakeRequired(err) {
+		log.Printf("[VCP] Command '%s' for %s needs wake, starting async wake", command, vin)
+		broadcastCommandState(vin, "waking", command, 0)
+
+		go wakeVehicleAsync(vin, command, body)
+
+		return nil, &CommandWakingError{Command: command, VIN: vin}
+	}
+
+	state.RecordCommandResult(vin, false)
+	broadcastCommandState(vin, "failed", command, 0)
+	return nil, err
 }
 
-// logCommand 记录控制命令日志
+type CommandPendingError struct {
+	Command string
+	VIN     string
+}
+
+func (e *CommandPendingError) Error() string {
+	return fmt.Sprintf("command '%s' timeout, result pending", e.Command)
+}
+
+type CommandWakingError struct {
+	Command string
+	VIN     string
+}
+
+func (e *CommandWakingError) Error() string {
+	return fmt.Sprintf("vehicle waking, command '%s' will retry automatically", e.Command)
+}
+
 func logCommand(vin, command string, success bool, errorMessage string) {
-	// 异步记录，不阻塞主流程
 	go func() {
 		logEntry := models.VehicleCommandLog{
 			VIN:          vin,
@@ -132,24 +295,59 @@ func logCommand(vin, command string, success bool, errorMessage string) {
 	}()
 }
 
+func handleCommandResponse(c *gin.Context, vin, command string, resp *fleet.CommandResponse, err error) {
+	if err != nil {
+		switch err.(type) {
+		case *CommandWakingError:
+			c.JSON(http.StatusAccepted, gin.H{
+				"code":    202,
+				"status":  "waking",
+				"message": "车辆唤醒中，命令将自动重试",
+				"command": command,
+			})
+		case *CommandPendingError:
+			c.JSON(http.StatusAccepted, gin.H{
+				"code":    202,
+				"status":  "pending",
+				"message": "命令已发送，等待车辆确认",
+				"command": command,
+			})
+		default:
+			errMsg := err.Error()
+			if IsVCPKeyError(err) {
+				c.JSON(http.StatusForbidden, gin.H{
+					"code":    403,
+					"status":  "vcp_required",
+					"message": errMsg,
+					"command": command,
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"status":  "failed",
+				"message": errMsg,
+				"command": command,
+			})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":   200,
+		"status": "success",
+		"data":   resp.Response,
+	})
+}
+
 func DoorLock(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "door_lock", nil)
-	if err != nil {
-		logCommand(req.VIN, "door_lock", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "door_lock", resp, err)
 }
 
 func DoorUnlock(c *gin.Context) {
@@ -158,18 +356,8 @@ func DoorUnlock(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "door_unlock", nil)
-	if err != nil {
-		logCommand(req.VIN, "door_unlock", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "door_unlock", resp, err)
 }
 
 func AutoConditioningStart(c *gin.Context) {
@@ -178,18 +366,8 @@ func AutoConditioningStart(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "auto_conditioning_start", nil)
-	if err != nil {
-		logCommand(req.VIN, "auto_conditioning_start", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "auto_conditioning_start", resp, err)
 }
 
 func AutoConditioningStop(c *gin.Context) {
@@ -198,18 +376,8 @@ func AutoConditioningStop(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "auto_conditioning_stop", nil)
-	if err != nil {
-		logCommand(req.VIN, "auto_conditioning_stop", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "auto_conditioning_stop", resp, err)
 }
 
 func HonkHorn(c *gin.Context) {
@@ -218,18 +386,8 @@ func HonkHorn(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "honk_horn", nil)
-	if err != nil {
-		logCommand(req.VIN, "honk_horn", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "honk_horn", resp, err)
 }
 
 func FlashLights(c *gin.Context) {
@@ -238,77 +396,32 @@ func FlashLights(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "flash_lights", nil)
-	if err != nil {
-		logCommand(req.VIN, "flash_lights", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "flash_lights", resp, err)
 }
 
-// ActuateTrunk 控制后备箱
-// POST /api/1/vehicles/{id}/command/actuate_trunk
-// Body: { "which_trunk": "rear" }
 func ActuateTrunk(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
-	body := map[string]string{
-		"which_trunk": "rear",
-	}
-
+	body := map[string]string{"which_trunk": "rear"}
 	resp, err := sendCommand(req.VIN, "actuate_trunk", body)
-	if err != nil {
-		logCommand(req.VIN, "actuate_trunk", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "actuate_trunk", resp, err)
 }
 
-// ActuateFrunk 控制前备箱
-// POST /api/1/vehicles/{id}/command/actuate_trunk
-// Body: { "which_trunk": "front" }
 func ActuateFrunk(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
-	body := map[string]string{
-		"which_trunk": "front",
-	}
-
+	body := map[string]string{"which_trunk": "front"}
 	resp, err := sendCommand(req.VIN, "actuate_trunk", body)
-	if err != nil {
-		logCommand(req.VIN, "actuate_frunk", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "actuate_frunk", resp, err)
 }
 
-// SetSentryMode 设置哨兵模式
-// POST /api/1/vehicles/{id}/command/set_sentry_mode
-// Body: { "on": true }
 func SetSentryMode(c *gin.Context) {
 	var req struct {
 		VIN string `json:"vin" binding:"required"`
@@ -318,145 +431,65 @@ func SetSentryMode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
-	body := map[string]bool{
-		"on": req.On,
-	}
-
+	body := map[string]bool{"on": req.On}
 	resp, err := sendCommand(req.VIN, "set_sentry_mode", body)
-	if err != nil {
-		logCommand(req.VIN, "set_sentry_mode", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "set_sentry_mode", resp, err)
 }
 
-// ChargeStart 开始充电
-// POST /api/1/vehicles/{id}/command/charge_start
 func ChargeStart(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "charge_start", nil)
-	if err != nil {
-		logCommand(req.VIN, "charge_start", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "charge_start", resp, err)
 }
 
-// ChargeStop 停止充电
-// POST /api/1/vehicles/{id}/command/charge_stop
 func ChargeStop(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "charge_stop", nil)
-	if err != nil {
-		logCommand(req.VIN, "charge_stop", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "charge_stop", resp, err)
 }
 
-// SetChargeLimit 设置充电限制
-// POST /api/1/vehicles/{id}/command/set_charge_limit
-// Body: { "percent": 80 }
 func SetChargeLimit(c *gin.Context) {
 	var req struct {
-		VIN    string `json:"vin" binding:"required"`
-		Percent int   `json:"percent" binding:"required,min=50,max=100"`
+		VIN     string `json:"vin" binding:"required"`
+		Percent int    `json:"percent" binding:"required,min=50,max=100"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
-	body := map[string]int{
-		"percent": req.Percent,
-	}
-
+	body := map[string]int{"percent": req.Percent}
 	resp, err := sendCommand(req.VIN, "set_charge_limit", body)
-	if err != nil {
-		logCommand(req.VIN, "set_charge_limit", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "set_charge_limit", resp, err)
 }
 
-// ChargePortDoorOpen 打开充电口
-// POST /api/1/vehicles/{id}/command/charge_port_door_open
 func ChargePortDoorOpen(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "charge_port_door_open", nil)
-	if err != nil {
-		logCommand(req.VIN, "charge_port_door_open", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "charge_port_door_open", resp, err)
 }
 
-// ChargePortDoorClose 关闭充电口
-// POST /api/1/vehicles/{id}/command/charge_port_door_close
 func ChargePortDoorClose(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "charge_port_door_close", nil)
-	if err != nil {
-		logCommand(req.VIN, "charge_port_door_close", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "charge_port_door_close", resp, err)
 }
 
-// SetTemps 设置温度
-// POST /api/1/vehicles/{id}/command/set_temps
-// Body: { "driver_temp": 22, "passenger_temp": 22 }
 func SetTemps(c *gin.Context) {
 	var req struct {
 		VIN           string  `json:"vin" binding:"required"`
@@ -467,77 +500,34 @@ func SetTemps(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
-	body := map[string]float64{
-		"driver_temp":    req.DriverTemp,
-		"passenger_temp": req.PassengerTemp,
-	}
-
+	body := map[string]float64{"driver_temp": req.DriverTemp, "passenger_temp": req.PassengerTemp}
 	resp, err := sendCommand(req.VIN, "set_temps", body)
-	if err != nil {
-		logCommand(req.VIN, "set_temps", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "set_temps", resp, err)
 }
 
-// RemoteSeatHeater 座椅加热
-// POST /api/1/vehicles/{id}/command/remote_seat_heater_request
-// Body: { "heater": 0, "level": 3 }
 func RemoteSeatHeater(c *gin.Context) {
 	var req struct {
 		VIN    string `json:"vin" binding:"required"`
-		Heater int   `json:"heater" binding:"required,min=0,max=5"`
-		Level  int   `json:"level" binding:"required,min=0,max=3"`
+		Heater int    `json:"heater" binding:"required,min=0,max=5"`
+		Level  int    `json:"level" binding:"required,min=0,max=3"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
-	body := map[string]int{
-		"heater": req.Heater,
-		"level":  req.Level,
-	}
-
+	body := map[string]int{"heater": req.Heater, "level": req.Level}
 	resp, err := sendCommand(req.VIN, "remote_seat_heater_request", body)
-	if err != nil {
-		logCommand(req.VIN, "remote_seat_heater_request", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "remote_seat_heater_request", resp, err)
 }
 
-// RemoteSteeringWheelHeater 方向盘加热
-// POST /api/1/vehicles/{id}/command/remote_steering_wheel_heater_request
 func RemoteSteeringWheelHeater(c *gin.Context) {
 	var req CommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
 		return
 	}
-
 	resp, err := sendCommand(req.VIN, "remote_steering_wheel_heater_request", nil)
-	if err != nil {
-		logCommand(req.VIN, "remote_steering_wheel_heater_request", false, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": resp.Response,
-	})
+	handleCommandResponse(c, req.VIN, "remote_steering_wheel_heater_request", resp, err)
 }
 
 func GetCommands(c *gin.Context) {
@@ -560,9 +550,5 @@ func GetCommands(c *gin.Context) {
 		{"command": "remote_seat_heater", "name": "座椅加热", "endpoint": "/api/vcp/remote_seat_heater"},
 		{"command": "remote_steering_wheel_heater", "name": "方向盘加热", "endpoint": "/api/vcp/remote_steering_wheel_heater"},
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"data": commands,
-	})
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": commands})
 }

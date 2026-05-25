@@ -202,6 +202,11 @@ func (e *stateHistory) proposeState(newState OnlineState, source string) {
 	defer e.mu.Unlock()
 
 	if time.Now().Before(e.stateLockUntil) {
+		if newState == OnlineStateAsleep && e.onlineState == OnlineStateOnline {
+			e.pendingState = &newState
+			e.pendingConfirmCount = 1
+			e.pendingSince = time.Now()
+		}
 		return
 	}
 
@@ -214,11 +219,16 @@ func (e *stateHistory) proposeState(newState OnlineState, source string) {
 	if e.pendingState != nil && *e.pendingState == newState {
 		e.pendingConfirmCount++
 		if e.pendingConfirmCount >= minConfirmCount {
-			if time.Since(e.stateChangedAt) >= stateCooldownSec*time.Second || e.onlineState == OnlineStateOffline {
+			cooldownOK := time.Since(e.stateChangedAt) >= stateCooldownSec*time.Second
+			if cooldownOK || e.onlineState == OnlineStateOffline || newState == OnlineStateAsleep {
 				e.onlineState = newState
 				e.stateChangedAt = time.Now()
 				e.transitionCount++
-				e.stateLockUntil = time.Now().Add(stateCooldownSec * time.Second)
+				if newState == OnlineStateAsleep {
+					e.stateLockUntil = time.Now().Add(10 * time.Second)
+				} else {
+					e.stateLockUntil = time.Now().Add(stateCooldownSec * time.Second)
+				}
 				e.pendingState = nil
 				e.pendingConfirmCount = 0
 				e.lastStateSource = source
@@ -282,12 +292,15 @@ func UpdateFromLightweight(vin string, apiState string, online bool, source stri
 
 	if online {
 		recordSuccess(e)
+		onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
+		e.proposeState(onlineState, source)
+	} else if apiState == "asleep" {
+		e.proposeState(OnlineStateAsleep, source)
 	} else {
 		recordFailure(e)
+		onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
+		e.proposeState(onlineState, source)
 	}
-
-	onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
-	e.proposeState(onlineState, source)
 
 	return buildOutputLightweight(e, apiState, online)
 }

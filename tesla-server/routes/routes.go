@@ -152,6 +152,32 @@ func getVehicleState(c *gin.Context) {
 		"vin":    vin,
 		"online": onlineState != "offline",
 		"state":  onlineState,
+		"state_output": map[string]interface{}{
+			"vin": vin,
+			"state": map[string]interface{}{
+				"online_state": onlineState,
+				"confidence":   0.3,
+				"changed_at":   time.Now().Unix(),
+			},
+			"drive": map[string]interface{}{
+				"drive_state": "parked",
+				"speed":       0,
+				"gear":        "P",
+			},
+			"charge": map[string]interface{}{
+				"charge_state": "disconnected",
+				"battery_level": 0,
+			},
+			"lock": map[string]interface{}{
+				"lock_state": "locked",
+				"doors_open": false,
+			},
+			"command": map[string]interface{}{
+				"command_state": "idle",
+				"last_command":  "",
+				"latency_ms":    0,
+			},
+		},
 	}})
 }
 
