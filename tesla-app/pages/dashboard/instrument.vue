@@ -1,6 +1,5 @@
 <template>
   <view class="instrument-page" :class="themeClass">
-    <NavBar title="车辆仪表盘" />
     <view class="cluster-screen" v-if="currentVehicle">
       <!-- 实时地图背景 -->
       <view class="map-bg-container">
@@ -127,7 +126,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Icon from '@/components/Icon/Icon.vue'
-import NavBar from '@/components/NavBar/NavBar.vue'
 import { useVehicleStore } from '@/store/vehicle'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
 import { useThemeStore } from '@/store/theme'

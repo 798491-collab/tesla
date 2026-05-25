@@ -908,18 +908,18 @@
     .dashboard-header {
         position: relative;
         display: flex;
-        min-height: 580rpx;
+        min-height: 650rpx;
         overflow: hidden;
     }
 
     .dashboard-hero-3d {
         position: absolute;
-        top: 60px;
-        left: 20%;
+        top: 100px;
+        left: calc(20% - 20px);
         right: 0;
         bottom: 0;
-        width: 100%;
-        height: 100%;
+        width: 66.67%;
+        height: 66.67%;
         z-index: 0;
         pointer-events: auto;
     }
