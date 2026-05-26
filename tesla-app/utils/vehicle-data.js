@@ -159,6 +159,32 @@ function onWSVehicleState(data) {
 function onWSOnlineState(data) {
   if (data.state_output) {
     vehicleStore.stateOutput = data.state_output
+  } else if (data.state) {
+    if (vehicleStore.stateOutput) {
+      vehicleStore.stateOutput = {
+        ...vehicleStore.stateOutput,
+        state: {
+          ...vehicleStore.stateOutput.state,
+          online_state: data.state,
+          online: data.online,
+        },
+      }
+    } else {
+      vehicleStore.stateOutput = {
+        vin: vehicleStore.vin,
+        state: {
+          online_state: data.state,
+          online: data.online,
+          confidence: 0.5,
+          changed_at: Math.floor(Date.now() / 1000),
+        },
+        drive: { drive_state: 'parked', speed: 0, gear: 'P' },
+        charge: { charge_state: 'disconnected', battery_level: 0 },
+        lock: { lock_state: 'locked', doors_open: false },
+        command: { command_state: 'idle', last_command: '', latency_ms: 0 },
+        meta: { last_success_at: 0, last_fail_at: 0, state_lock_until: 0, state_transition_count: 0, last_state_source: 'ws' },
+      }
+    }
   }
   mergeData(data)
   if (vehicleStore.source !== 'ble') {

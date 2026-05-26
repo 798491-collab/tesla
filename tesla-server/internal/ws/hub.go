@@ -179,17 +179,11 @@ func BroadcastVehicleState(vin string, data interface{}) {
 
 func BroadcastOnlineState(vin string, onlineState string, online bool) {
 	if DefaultHub != nil {
-		DefaultHub.BroadcastToVIN(vin, "online_state", map[string]interface{}{
+		msgData := map[string]interface{}{
 			"state":  onlineState,
 			"online": online,
-			"state_output": map[string]interface{}{
-				"vin": vin,
-				"state": map[string]interface{}{
-					"online_state": onlineState,
-					"online":       online,
-				},
-			},
-		})
+		}
+		DefaultHub.BroadcastToVIN(vin, "online_state", msgData)
 	}
 }
 

@@ -168,6 +168,12 @@ func recordSuccess(e *stateHistory) {
 	e.lastSuccessAt = time.Now()
 }
 
+func recordLightweightSuccess(e *stateHistory) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.lastSuccessAt = time.Now()
+}
+
 func recordFailure(e *stateHistory) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -295,7 +301,20 @@ func UpdateFromLightweight(vin string, apiState string, online bool, source stri
 		onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
 		e.proposeState(onlineState, source)
 	} else if apiState == "asleep" {
+		recordLightweightSuccess(e)
 		e.proposeState(OnlineStateAsleep, source)
+	} else if apiState == "offline" {
+		e.mu.Lock()
+		currentState := e.onlineState
+		e.mu.Unlock()
+		if currentState == OnlineStateAsleep {
+			recordLightweightSuccess(e)
+			e.proposeState(OnlineStateAsleep, source)
+		} else {
+			recordFailure(e)
+			onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
+			e.proposeState(onlineState, source)
+		}
 	} else {
 		recordFailure(e)
 		onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))

@@ -41,8 +41,7 @@
                 <template v-if="isCharging">
                   <text class="ring-unit">kW</text>
                   <text class="ring-value">{{ chargePowerDisplay }}</text>
-                  <text class="ring-sub" v-if="chargeVoltage > 0">{{ chargeVoltage }}V</text>
-                  <text class="ring-sub" v-if="chargeAmpere > 0">{{ chargeAmpere }}A</text>
+                  <text class="ring-sub">{{ chargeTypeLabel }}充电</text>
                   <text class="ring-label">Charging</text>
                 </template>
                 <template v-else>
@@ -131,6 +130,7 @@ import Icon from '@/components/Icon/Icon.vue'
 import { useVehicleStore } from '@/store/vehicle'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
 import { useThemeStore } from '@/store/theme'
+import { getChargeType } from '@/utils/vehicle-state'
 
 const vehicleStore = useVehicleStore()
 const vehicleDataStore = useVehicleData()
@@ -159,6 +159,7 @@ const chargePower = computed(() => vehicleData.value?.charge_power || 0)
 const chargeVoltage = computed(() => vehicleData.value?.voltage || 0)
 const chargeAmpere = computed(() => vehicleData.value?.ampere || 0)
 const chargePowerDisplay = computed(() => Math.round(chargePower.value))
+const chargeTypeLabel = computed(() => getChargeType(vehicleData.value).label)
 
 const drivePower = computed(() => vehicleData.value?.power || 0)
 const drivePowerDisplay = computed(() => Math.round(Math.abs(drivePower.value)))

@@ -62,7 +62,7 @@
                                                 
                        
                          <view class="battery-bar-detail" v-if="isChargingOrDebug">
-                           <text class="battery-bar-charging-text">剩余 {{ chargeTimeRemaining }} · {{ chargeType }} · {{ chargeAmps }}A</text>
+                           <text class="battery-bar-charging-text">{{ chargeDisplayText }}</text>
                          </view>
                        </view>
                        
@@ -281,9 +281,10 @@
         destroyVehicleData
     } from '@/utils/vehicle-data'
     import {
-        getOnlineStateLabel,
-        getOnlineStateColor,
-        isVehicleOnline
+        getDisplayStateLabel,
+        getDisplayStateColor,
+        isVehicleOnline,
+        getChargeType
     } from '@/utils/vehicle-state'
     import {
         useThemeStore
@@ -387,23 +388,15 @@
         }]
     })
     const isCharging = computed(() => vehicleData.value?.charging === true)
-    const chargeRate = computed(() => vehicleData.value?.charge_power || 0)
+    const chargePower = computed(() => vehicleData.value?.charge_power || 0)
     const chargeEnergyAdded = computed(() => vehicleData.value?.added_energy || 0)
     const chargeLimit = computed(() => vehicleData.value?.charge_limit_soc || 90)
-    const chargeAmps = computed(() => vehicleData.value?.charge_amps || 32)
-    const chargeType = computed(() => {
-        const type = vehicleData.value?.charge_type
-        if (type === 'supercharger') return '超级充电桩'
-        if (type === 'destination') return '目的地充电桩'
-        return '交流充电桩'
-    })
-    const chargeTimeRemaining = computed(() => {
-        const mins = vehicleData.value?.charge_time_remaining || 0
-        if (mins <= 0) return '计算中...'
-        const h = Math.floor(mins / 60)
-        const m = Math.round(mins % 60)
-        if (h > 0) return `${h}小时 ${m}分钟`
-        return `${m}分钟`
+    const chargeTypeLabel = computed(() => getChargeType(vehicleData.value).label)
+    const chargeDisplayText = computed(() => {
+      const power = chargePower.value
+      const type = chargeTypeLabel.value
+      if (power > 0) return `${power} kW · ${type}`
+      return type
     })
     const recentTripDistance = computed(() => {
         return (vehicleData.value?.recent_trip_distance || 32).toFixed(0)
@@ -415,9 +408,9 @@
     const locked = computed(() => vehicleData.value?.locked !== false)
     const climateOn = computed(() => vehicleData.value?.is_ac_on)
 
-    const stateText = computed(() => getOnlineStateLabel(stateOutput.value))
+    const stateText = computed(() => getDisplayStateLabel(stateOutput.value, vehicleData.value))
 
-    const stateColor = computed(() => getOnlineStateColor(stateOutput.value))
+    const stateColor = computed(() => getDisplayStateColor(stateOutput.value, vehicleData.value))
 
     const batteryColor = computed(() => {
         const p = batteryPercent.value

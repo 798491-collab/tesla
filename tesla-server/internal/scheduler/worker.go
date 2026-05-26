@@ -138,6 +138,12 @@ func (w *VehicleWorker) tryTransitionToSleeping(reason string) {
 	log.Printf("[Worker] %s: downgrading to sleeping (%s)", w.VIN, reason)
 	w.transitionTo(pollSleeping)
 
+	stateOutput := vstate.UpdateFromLightweight(w.VIN, "asleep", false, "sleep_transition")
+	redis.UpdateVehicleStateFields(w.VIN, map[string]interface{}{
+		"state":        "asleep",
+		"online":       false,
+		"state_output": stateOutput,
+	})
 	redis.SetVehicleOnline(w.VIN, false)
 	database.DB.Model(&models.TeslaVehicle{}).
 		Where("vin = ?", w.VIN).
@@ -223,11 +229,12 @@ func (w *VehicleWorker) pollLightweight() {
 		w.sleepHintCount++
 		log.Printf("[Worker] %s: /vehicles hint=%s (sleep hints: %d/%d)", w.VIN, currentState, w.sleepHintCount, sleepHintThreshold)
 
-		vstate.UpdateFromLightweight(w.VIN, currentState, false, "lightweight_poll")
+		stateOutput := vstate.UpdateFromLightweight(w.VIN, currentState, false, "lightweight_poll")
 
 		redis.UpdateVehicleStateFields(w.VIN, map[string]interface{}{
-			"state":  currentState,
-			"online": false,
+			"state":        currentState,
+			"online":       false,
+			"state_output": stateOutput,
 		})
 		redis.SetVehicleOnline(w.VIN, false)
 		ws.BroadcastOnlineState(w.VIN, currentState, false)
@@ -239,10 +246,11 @@ func (w *VehicleWorker) pollLightweight() {
 	}
 
 	w.sleepHintCount = 0
-	vstate.UpdateFromLightweight(w.VIN, currentState, true, "lightweight_poll")
+	stateOutput := vstate.UpdateFromLightweight(w.VIN, currentState, true, "lightweight_poll")
 	redis.UpdateVehicleStateFields(w.VIN, map[string]interface{}{
-		"state":  currentState,
-		"online": true,
+		"state":        currentState,
+		"online":       true,
+		"state_output": stateOutput,
 	})
 	redis.SetVehicleOnline(w.VIN, true)
 	database.DB.Model(&models.TeslaVehicle{}).
@@ -399,6 +407,12 @@ func (w *VehicleWorker) onWakingFailed() {
 	w.wakingSuccessCount = 0
 	w.transitionTo(pollSleeping)
 
+	stateOutput := vstate.UpdateFromLightweight(w.VIN, "asleep", false, "waking_failed")
+	redis.UpdateVehicleStateFields(w.VIN, map[string]interface{}{
+		"state":        "asleep",
+		"online":       false,
+		"state_output": stateOutput,
+	})
 	redis.SetVehicleOnline(w.VIN, false)
 	database.DB.Model(&models.TeslaVehicle{}).
 		Where("vin = ?", w.VIN).
@@ -514,6 +528,12 @@ func (w *VehicleWorker) checkIdleTimeout() {
 		log.Printf("[Worker] %s: idle for %v (threshold: %v), returning to sleeping mode", w.VIN, idle, idleTimeout)
 		w.transitionTo(pollSleeping)
 
+		stateOutput := vstate.UpdateFromLightweight(w.VIN, "asleep", false, "idle_timeout")
+		redis.UpdateVehicleStateFields(w.VIN, map[string]interface{}{
+			"state":        "asleep",
+			"online":       false,
+			"state_output": stateOutput,
+		})
 		redis.SetVehicleOnline(w.VIN, false)
 		database.DB.Model(&models.TeslaVehicle{}).
 			Where("vin = ?", w.VIN).

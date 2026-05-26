@@ -185,3 +185,53 @@ export function getStateMarkerColor(state) {
 }
 
 export const VEHICLE_ONLINE_STATES = Object.freeze(Object.keys(ONLINE_STATE_MAP))
+
+const DISPLAY_STATE_MAP = {
+  driving:    { label: '行驶中', color: '#5BE7C4' },
+  reversing:  { label: '倒车中', color: '#fbbf24' },
+  charging:   { label: '充电中', color: '#5BE7C4' },
+  parked:     { label: '已驻车', color: '#5BE7C4' },
+  climate_on: { label: '空调运行', color: '#60a5fa' },
+  waking:     { label: '唤醒中', color: '#60a5fa' },
+  asleep:     { label: '休眠中', color: '#7C879B' },
+  offline:    { label: '离线',   color: '#64748B' },
+}
+
+export function getDisplayState(stateOutput, vehicleData) {
+  const onlineState = stateOutput?.state?.online_state
+  const isCharging = vehicleData?.charging === true
+    || vehicleData?.charging_state === 'Charging'
+    || stateOutput?.charge?.charge_state === 'charging'
+    || stateOutput?.charge?.charge_state === 'supercharging'
+  const speed = Number(vehicleData?.speed || 0)
+  const gear = vehicleData?.gear || ''
+
+  if (isCharging) return DISPLAY_STATE_MAP.charging
+  if (speed > 1) return DISPLAY_STATE_MAP.driving
+  if (gear === 'R') return DISPLAY_STATE_MAP.reversing
+  if (onlineState === 'climate_on') return DISPLAY_STATE_MAP.climate_on
+  if (onlineState === 'waking') return DISPLAY_STATE_MAP.waking
+  if (onlineState === 'asleep') return DISPLAY_STATE_MAP.asleep
+  if (onlineState === 'offline') return DISPLAY_STATE_MAP.offline
+  if (onlineState === 'online' || onlineState === 'driving'
+    || onlineState === 'sentry_on' || onlineState === 'updating') {
+    return DISPLAY_STATE_MAP.parked
+  }
+  if (speed === 0 && gear === 'P') return DISPLAY_STATE_MAP.parked
+  return DISPLAY_STATE_MAP.parked
+}
+
+export function getDisplayStateLabel(stateOutput, vehicleData) {
+  return getDisplayState(stateOutput, vehicleData)?.label || '未知'
+}
+
+export function getDisplayStateColor(stateOutput, vehicleData) {
+  return getDisplayState(stateOutput, vehicleData)?.color || '#7C879B'
+}
+
+export function getChargeType(vehicleData) {
+  const voltage = Number(vehicleData?.voltage || 0)
+  const supercharging = vehicleData?.supercharging === true
+  if (supercharging || voltage > 220) return { label: '直流', type: 'dc' }
+  return { label: '交流', type: 'ac' }
+}

@@ -317,7 +317,7 @@ import Icon from '@/components/Icon/Icon.vue'
 import { useThemeStore } from '@/store/theme'
 import { useVehicleStore } from '@/store/vehicle'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
-import { getOnlineStateLabel, getOnlineStateColor, canControlVehicle, isVehicleOnline, isVehicleCharging } from '@/utils/vehicle-state'
+import { getDisplayStateLabel, getDisplayStateColor, canControlVehicle, isVehicleOnline, isVehicleCharging } from '@/utils/vehicle-state'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const themeStore = useThemeStore()
@@ -369,8 +369,8 @@ const seatHeaterOn = computed(() => {
 })
 const steeringHeaterOn = computed(() => vehicleData.value?.steering_wheel_heater)
 
-const stateText = computed(() => getOnlineStateLabel(stateOutput.value))
-const stateColor = computed(() => getOnlineStateColor(stateOutput.value))
+const stateText = computed(() => getDisplayStateLabel(stateOutput.value, vehicleData.value))
+const stateColor = computed(() => getDisplayStateColor(stateOutput.value, vehicleData.value))
 
 onMounted(() => { loadVehicles() })
 

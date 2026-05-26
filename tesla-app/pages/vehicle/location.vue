@@ -149,7 +149,7 @@ import { get } from '@/utils/request.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
-import { getOnlineStateLabel, getOnlineStateColor, getOnlineStateIcon, getOnlineStateMarkerColor, isVehicleOnline, getRefreshInterval } from '@/utils/vehicle-state'
+import { getDisplayStateLabel, getDisplayStateColor, getOnlineStateIcon, getOnlineStateMarkerColor, isVehicleOnline, getRefreshInterval } from '@/utils/vehicle-state'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
@@ -359,7 +359,7 @@ const formatTime = (t) => {
 
 const getStatusText = (state) => {
   if (!state) return '离线'
-  return getOnlineStateLabel(stateOutput.value)
+  return getDisplayStateLabel(stateOutput.value, vehicleData.value)
 }
 
 const getStatusClass = (state) => {

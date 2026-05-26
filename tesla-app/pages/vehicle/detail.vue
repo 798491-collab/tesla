@@ -80,7 +80,7 @@
             </view>
             <view class="charging-row" v-if="vehicleData.charging">
               <Icon name="BatteryCharging" :size="16" themeColor="charging" />
-              <text class="charging-text">充电中 {{ vehicleData.charge_speed ? vehicleData.charge_speed + ' kW' : '' }}</text>
+              <text class="charging-text">充电中 {{ vehicleData.charge_power > 0 ? vehicleData.charge_power + ' kW · ' : '' }}{{ getChargeType(vehicleData).label }}充电</text>
             </view>
             <view class="info-rows" style="margin-top: 20rpx;">
               <view class="info-row" v-if="vehicleData.charging_state">
@@ -95,7 +95,7 @@
                   <Icon name="Speedometer" :size="16" themeColor="inactive" />
                   <text class="info-label">充电速度</text>
                 </view>
-                <text class="info-value">{{ vehicleData.charge_speed }} kW</text>
+                <text class="info-value">{{ vehicleData.charge_speed }} km/h</text>
               </view>
               <view class="info-row" v-if="vehicleData.charge_power > 0">
                 <view class="info-left">
@@ -103,6 +103,13 @@
                   <text class="info-label">充电器功率</text>
                 </view>
                 <text class="info-value">{{ vehicleData.charge_power }} kW</text>
+              </view>
+              <view class="info-row" v-if="vehicleData.charging">
+                <view class="info-left">
+                  <Icon name="Flash" :size="16" themeColor="inactive" />
+                  <text class="info-label">充电类型</text>
+                </view>
+                <text class="info-value">{{ getChargeType(vehicleData).label }}充电</text>
               </view>
               <view class="info-row" v-if="vehicleData.voltage >= 50">
                 <view class="info-left">
@@ -329,7 +336,7 @@ import { onShow, onHide } from '@dcloudio/uni-app'
 import { useVehicleStore } from '@/store/vehicle'
 import { useThemeStore } from '@/store/theme'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
-import { getOnlineStateLabel, getOnlineStateColor } from '@/utils/vehicle-state'
+import { getDisplayStateLabel, getDisplayStateColor, getChargeType } from '@/utils/vehicle-state'
 import { getLatestAnalysis, triggerVehicleAnalysis } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
@@ -362,9 +369,9 @@ const aiResult = ref(null)
 const aiLoading = ref(false)
 const aiExpanded = ref(false)
 
-const stateText = computed(() => getOnlineStateLabel(stateOutput.value))
+const stateText = computed(() => getDisplayStateLabel(stateOutput.value, vehicleData.value))
 
-const stateColor = computed(() => getOnlineStateColor(stateOutput.value))
+const stateColor = computed(() => getDisplayStateColor(stateOutput.value, vehicleData.value))
 
 const maskVIN = (vin) => {
   if (!vin || vin.length <= 6) return vin || '--'
