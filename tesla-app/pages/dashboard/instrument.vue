@@ -21,7 +21,7 @@
           :layer-style="mapLayerStyle"
           @updated="onMapUpdated"
         ></map>
-        <view class="map-overlay"></view>
+        <view class="map-overlay" style="background:none"></view>
       </view>
 
       <!-- 顶部状态栏 -->
@@ -39,8 +39,8 @@
             <view class="ring-outer">
               <view class="ring-inner">
                 <template v-if="isCharging">
-                  <text class="ring-unit">kW</text>
-                  <text class="ring-value">{{ chargePowerDisplay }}</text>
+                  <text class="ring-unit">V</text>
+                  <text class="ring-value">{{ chargeVoltage }}</text>
                   <text class="ring-sub">{{ chargeTypeLabel }}充电</text>
                   <text class="ring-label">Charging</text>
                 </template>
