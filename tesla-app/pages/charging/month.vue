@@ -72,63 +72,35 @@
             <text class="info-label">时长</text>
             <text class="info-value">{{ formatDuration(log.charge_duration_minutes) }}</text>
           </view>
-          <view class="log-info full">
-            <text class="info-label">位置</text>
-            <text class="info-value small">{{ log.address || log.location || '--' }}</text>
-            <text class="info-poi" v-if="log.poi_name">{{ log.poi_name }}</text>
-          </view>
-          <view class="log-info full">
-            <text class="info-label">城市</text>
-            <text class="info-value">{{ log.city || '--' }}</text>
-            <text class="info-district" v-if="log.district">{{ log.district }}</text>
-          </view>
-          <view class="log-info price-section" :class="{ 'editing': editingLogId === log.id }">
-            <view class="price-header">
-              <text class="info-label">{{ log.charge_type === 'DC' ? '充电费用' : '电价' }}</text>
-              <view v-if="editingLogId !== log.id" class="price-edit-btn" @click.stop="startEditPrice(log)">
-                <text class="edit-btn-text">{{ (log.charge_type === 'DC' ? log.total_cost : log.price_per_kwh) ? '修改' : '添加' }}</text>
-              </view>
-            </view>
-            <view v-if="editingLogId === log.id" class="price-edit-area">
-              <view class="price-input-wrap">
-                <input
-                  class="price-input"
-                  v-model="priceInput"
-                  type="digit"
-                  :placeholder="log.charge_type === 'DC' ? '0.00' : '0.00'"
-                  maxlength="8"
-                />
-                <text class="price-unit">{{ log.charge_type === 'DC' ? '元' : '元/kWh' }}</text>
-              </view>
-              <view class="price-actions">
-                <view class="price-btn save" @click.stop="savePrice(log)">
-                  <text class="btn-text">保存</text>
-                </view>
-                <view class="price-btn cancel" @click.stop="cancelEditPrice">
-                  <text class="btn-text">取消</text>
-                </view>
-              </view>
-              <view v-if="log.charge_type !== 'DC' && priceInput && !isNaN(parseFloat(priceInput))" class="price-total">
-                <text class="price-total-label">预估费用</text>
-                <text class="price-total-value">¥{{ calculateTotalCost({ ...log, price_per_kwh: parseFloat(priceInput) }) }}</text>
-              </view>
-            </view>
-            <view v-else class="price-display">
+          <view class="log-info">
+            <text class="info-label">{{ log.charge_type === 'DC' ? '费用' : '电价' }}</text>
+            <view class="info-value-row" v-if="editingLogId !== log.id" @click.stop="startEditPrice(log)">
               <template v-if="log.charge_type === 'DC'">
                 <text class="info-value" :class="{ 'highlight': log.total_cost }">
-                  {{ log.total_cost ? '¥' + log.total_cost.toFixed(2) : '--' }}
+                  {{ log.total_cost ? '¥' + log.total_cost.toFixed(2) : '添加' }}
                 </text>
               </template>
               <template v-else>
                 <text class="info-value" :class="{ 'highlight': log.price_per_kwh }">
-                  {{ log.price_per_kwh ? log.price_per_kwh.toFixed(2) : '--' }}
+                  {{ log.price_per_kwh ? log.price_per_kwh.toFixed(2) + '元/kWh' : '添加' }}
                 </text>
-                <text class="price-unit-static" v-if="log.price_per_kwh">元/kWh</text>
-                <view v-if="log.total_cost" class="price-total-display">
-                  <text class="price-total-value">¥{{ log.total_cost.toFixed(2) }}</text>
-                </view>
+                <text class="price-total-tag" v-if="log.total_cost">¥{{ log.total_cost.toFixed(2) }}</text>
               </template>
             </view>
+            <view v-else class="price-inline-edit">
+              <input class="price-input-sm" v-model="priceInput" type="digit" :placeholder="log.charge_type === 'DC' ? '0.00' : '0.00'" maxlength="8" />
+              <text class="price-unit-sm">{{ log.charge_type === 'DC' ? '元' : '元/kWh' }}</text>
+              <view class="price-btn-sm save" @click.stop="savePrice(log)">
+                <text class="btn-text-sm">✓</text>
+              </view>
+              <view class="price-btn-sm cancel" @click.stop="cancelEditPrice">
+                <text class="btn-text-sm">✕</text>
+              </view>
+            </view>
+          </view>
+          <view class="log-info full location-row">
+            <Icon name="Location" :size="14" themeColor="hint" />
+            <text class="info-value small">{{ [log.city, log.district, log.address || log.location].filter(Boolean).join(' · ') || '--' }}</text>
           </view>
         </view>
         <view class="log-ai-section">
@@ -708,176 +680,85 @@ const goChargingMap = () => {
     }
   }
 
-  .info-poi {
-    font-size: 20rpx;
-    color: var(--color-primary);
-    display: block;
-    margin-top: 4rpx;
+  .info-value-row {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    flex-wrap: nowrap;
   }
 
-  .info-district {
+  .price-total-tag {
     font-size: 20rpx;
-    color: var(--dark-page-text-hint);
-    display: block;
-    margin-top: 4rpx;
+    color: #fff;
+    background: var(--color-primary);
+    padding: 2rpx 10rpx;
+    border-radius: 8rpx;
+    font-weight: 600;
+    white-space: nowrap;
   }
 
-  &.price-section {
-    grid-column: span 2;
-    background: var(--dark-page-glass-bg);
-    border-radius: 16rpx;
-    padding: 16rpx 20rpx;
-    margin-top: 8rpx;
+  .price-inline-edit {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
 
-    &.editing {
-      background: var(--dark-page-icon-wrap-bg);
+    .price-input-sm {
+      width: 100rpx;
+      height: 48rpx;
+      background: var(--dark-page-glass-bg);
+      border-radius: 8rpx;
+      padding: 0 12rpx;
+      font-size: 24rpx;
+      color: var(--dark-page-text);
       border: 1rpx solid var(--color-primary);
     }
 
-    .price-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8rpx;
-
-        .price-edit-btn {
-          padding: 6rpx 12rpx;
-          border-radius: 8rpx;
-          background: var(--color-primary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-
-          .edit-btn-text {
-            font-size: 22rpx;
-            color: #fff;
-            font-weight: 500;
-          }
-
-          &:active {
-            opacity: 0.8;
-          }
-        }
-      }
-
-    .price-display {
-      display: flex;
-      align-items: center;
-      gap: 8rpx;
-      flex-wrap: wrap;
-
-      .price-unit-static {
-        font-size: 22rpx;
-        color: var(--dark-page-text-hint);
-      }
-
-      .price-total-display {
-        margin-left: auto;
-        padding: 4rpx 12rpx;
-        background: var(--color-primary);
-        border-radius: 12rpx;
-
-        .price-total-value {
-          font-size: 24rpx;
-          color: #fff;
-          font-weight: 600;
-        }
-      }
+    .price-unit-sm {
+      font-size: 20rpx;
+      color: var(--dark-page-text-hint);
+      white-space: nowrap;
     }
 
-    .price-edit-area {
-      .price-input-wrap {
-        display: flex;
-        align-items: center;
-        gap: 12rpx;
-        margin-bottom: 12rpx;
+    .price-btn-sm {
+      width: 56rpx;
+      height: 56rpx;
+      border-radius: 10rpx;
+      display: flex;
+      align-items: center;
+      justify-content: center;
 
-        .price-input {
-          flex: 1;
-          height: 64rpx;
-          background: var(--dark-page-glass-bg);
-          border-radius: 12rpx;
-          padding: 0 20rpx;
-          font-size: 28rpx;
-          color: var(--dark-page-text);
-          border: 1rpx solid var(--dark-page-glass-border);
-
-          &:focus {
-            border-color: var(--color-primary);
-          }
-        }
-
-        .price-unit {
-          font-size: 24rpx;
-          color: var(--dark-page-text-secondary);
-          white-space: nowrap;
-        }
+      &.save {
+        background: var(--color-primary);
       }
 
-      .price-actions {
-        display: flex;
-        gap: 16rpx;
-        margin-bottom: 12rpx;
-
-        .price-btn {
-          flex: 1;
-          height: 56rpx;
-          border-radius: 12rpx;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8rpx;
-
-          .btn-text {
-            font-size: 24rpx;
-            font-weight: 500;
-          }
-
-          &.save {
-            background: var(--color-primary);
-
-            .btn-text {
-              color: #fff;
-            }
-
-            &:active {
-              opacity: 0.8;
-            }
-          }
-
-          &.cancel {
-            background: var(--dark-page-glass-bg);
-            border: 1rpx solid var(--dark-page-glass-border);
-
-            .btn-text {
-              color: var(--dark-page-text-secondary);
-            }
-
-            &:active {
-              background: var(--dark-page-icon-wrap-bg);
-            }
-          }
-        }
+      &.cancel {
+        background: var(--dark-page-glass-bg);
+        border: 1rpx solid var(--dark-page-glass-border);
       }
 
-      .price-total {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-top: 12rpx;
-        border-top: 1rpx solid var(--dark-page-glass-border);
-
-        .price-total-label {
-          font-size: 22rpx;
-          color: var(--dark-page-text-hint);
-        }
-
-        .price-total-value {
-          font-size: 28rpx;
-          color: var(--color-primary);
-          font-weight: 700;
-        }
+      .btn-text-sm {
+        font-size: 28rpx;
+        color: #fff;
+        font-weight: 700;
       }
+
+      &.cancel .btn-text-sm {
+        color: var(--dark-page-text-secondary);
+      }
+    }
+  }
+
+  &.location-row {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    padding-top: 12rpx;
+    margin-top: 4rpx;
+    border-top: 1rpx solid var(--dark-page-glass-border);
+
+    .info-value.small {
+      flex: 1;
+      min-width: 0;
     }
   }
 }
