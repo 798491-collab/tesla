@@ -4,8 +4,14 @@
     <scroll-view scroll-y class="main-scroll">
     <view class="month-header-card">
       <view class="header-row">
-        <Icon name="Flash" :size="22" themeColor="primary" />
-        <text class="header-title">{{ formatMonth(month) }} 充电记录</text>
+        <view class="header-left">
+          <Icon name="Flash" :size="22" themeColor="primary" />
+          <text class="header-title">{{ formatMonth(month) }} 充电地图</text>
+        </view>
+        <view class="map-entry-btn" @click="goChargingMap" v-if="hasMapData">
+          <Icon name="Map" :size="16" themeColor="primary" />
+          <text class="map-entry-text">充电地图</text>
+        </view>
       </view>
     </view>
 
@@ -61,6 +67,10 @@
           <view class="log-info">
             <text class="info-label">电量</text>
             <text class="info-value highlight">{{ log.charge_kwh?.toFixed(2) }} kWh</text>
+          </view>
+          <view class="log-info">
+            <text class="info-label">时长</text>
+            <text class="info-value">{{ formatDuration(log.charge_duration_minutes) }}</text>
           </view>
           <view class="log-info full">
             <text class="info-label">位置</text>
@@ -227,6 +237,14 @@ const formatDate = (dateStr) => {
   return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+const formatDuration = (minutes) => {
+  if (!minutes || minutes <= 0) return '--'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h > 0) return `${h}h${m > 0 ? m + 'min' : ''}`
+  return `${m}min`
+}
+
 const goAIAnalysis = () => {
   uni.navigateTo({ url: `/pages/ai/analysis?vin=${vin.value}&type=charging&mode=monthly&month=${month.value}` })
 }
@@ -350,6 +368,14 @@ const calculateTotalCost = (log) => {
   if (!log.price_per_kwh || !log.charge_kwh) return 0
   return (log.price_per_kwh * log.charge_kwh).toFixed(2)
 }
+
+const hasMapData = computed(() => {
+  return logs.value.some(log => log.latitude && log.longitude)
+})
+
+const goChargingMap = () => {
+  uni.navigateTo({ url: `/pages/charging/map?vin=${vin.value}` })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -382,12 +408,34 @@ const calculateTotalCost = (log) => {
   .header-row {
     display: flex;
     align-items: center;
-    gap: 12rpx;
+    justify-content: space-between;
 
-    .header-title {
-      font-size: 32rpx;
-      font-weight: 700;
-      color: var(--dark-page-text);
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12rpx;
+
+      .header-title {
+        font-size: 32rpx;
+        font-weight: 700;
+        color: var(--dark-page-text);
+      }
+    }
+
+    .map-entry-btn {
+      display: flex;
+      align-items: center;
+      gap: 6rpx;
+      padding: 10rpx 20rpx;
+      background: var(--dark-page-glass-bg);
+      border: 1rpx solid var(--dark-page-glass-border);
+      border-radius: 20rpx;
+
+      .map-entry-text {
+        font-size: 24rpx;
+        color: var(--color-primary);
+        font-weight: 500;
+      }
     }
   }
 }

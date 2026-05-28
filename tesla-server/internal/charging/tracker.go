@@ -88,27 +88,30 @@ func endCharging(vin string, data *fleet.SimpleVehicleData) {
 
 	chargeKwh := estimateChargeKwh(socAdded, vin)
 
-	// 充电结束时调用一次逆地理编码，获取详细信息
+	durationMinutes := int(now.Sub(state.StartTime).Minutes())
+
 	geoResult := geo.ReverseGeocodeDetail(state.Latitude, state.Longitude)
 
 	location := fmt.Sprintf("%.6f,%.6f", state.Latitude, state.Longitude)
 
 	charge := models.ChargingLog{
-		VIN:        vin,
-		StartTime:  state.StartTime,
-		EndTime:    &now,
-		SocStart:   state.SocStart,
-		SocEnd:     data.Soc,
-		ChargeKwh:  chargeKwh,
-		MaxPower:   state.MaxPower,
-		ChargeType: state.ChargeType,
-		Location:   location,
-		Address:    geoResult.Address,
-		City:       geoResult.City,
-		District:   geoResult.District,
-		PoiName:    geoResult.PoiName,
-		Latitude:   state.Latitude,
-		Longitude:  state.Longitude,
+		VIN:                   vin,
+		StartTime:             state.StartTime,
+		EndTime:               &now,
+		SocStart:              state.SocStart,
+		SocEnd:                data.Soc,
+		ChargeKwh:             chargeKwh,
+		MaxPower:              state.MaxPower,
+		ChargeDurationMinutes: durationMinutes,
+		ChargeType:            state.ChargeType,
+		IsDcFastCharge:        state.ChargeType == "DC",
+		Location:              location,
+		Address:               geoResult.Address,
+		City:                  geoResult.City,
+		District:              geoResult.District,
+		PoiName:               geoResult.PoiName,
+		Latitude:              state.Latitude,
+		Longitude:             state.Longitude,
 	}
 
 	database.DB.Create(&charge)

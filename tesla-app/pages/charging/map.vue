@@ -6,39 +6,46 @@
       :latitude="centerLat"
       :longitude="centerLng"
       :markers="markers"
-      :scale="11"
+      :scale="mapScale"
+      :enable-3D="true"
+      :show-compass="true"
+      :enable-zoom="true"
+      :enable-scroll="true"
+      :enable-rotate="true"
+      @markertap="onMarkerTap"
     ></map>
 
     <view class="list-card">
       <view class="list-header">
         <view class="header-left">
           <view class="header-icon">
-            <Icon name="Map" :size="18" color="#fff" />
+            <Icon name="Flash" :size="18" color="#fff" />
           </view>
           <text class="list-title">充电位置</text>
         </view>
         <view class="header-count">
-          <text class="count-text">{{ logs.length }} 条记录</text>
+          <text class="count-text">{{ groupedLocations.length }} 个位置 · {{ logs.length }} 次</text>
         </view>
       </view>
       <scroll-view scroll-y class="log-scroll">
-        <view class="log-item" v-for="log in logs" :key="log.id" @click="focusLocation(log)">
-          <view class="log-type-badge" :class="log.charge_type?.toLowerCase()">
-            <Icon :name="log.charge_type === 'DC' ? 'Flash' : 'BatteryCharging'" :size="16" color="#fff" />
+        <view class="log-item" v-for="group in groupedLocations" :key="group.key" @click="focusLocation(group)">
+          <view class="log-type-badge" :class="{ 'dc': group.isDC, 'ac': !group.isDC }">
+            <Icon :name="group.isDC ? 'Flash' : 'BatteryCharging'" :size="16" color="#fff" />
+            <text class="badge-count" v-if="group.count > 1">{{ group.count }}</text>
           </view>
           <view class="log-center">
-            <text class="log-address">{{ log.address || log.location || '未知位置' }}</text>
+            <view class="log-top-row">
+              <text class="log-address">{{ group.address }}</text>
+              <text class="log-kwh">{{ group.totalKwh.toFixed(1) }}<text class="log-unit"> kWh</text></text>
+            </view>
             <view class="log-meta">
               <Icon name="Time" :size="12" color="#bfbfbf" />
-              <text class="log-time">{{ formatDate(log.start_time) }}</text>
+              <text class="log-time">{{ formatDate(group.latestTime) }}</text>
+              <text class="log-count-tag" v-if="group.count > 1">共{{ group.count }}次</text>
             </view>
           </view>
-          <view class="log-right">
-            <text class="log-kwh">{{ log.charge_kwh?.toFixed(1) }}</text>
-            <text class="log-unit">kWh</text>
-          </view>
         </view>
-        <view class="empty-tip" v-if="logs.length === 0">
+        <view class="empty-tip" v-if="groupedLocations.length === 0">
           <Icon name="FlashOff" :size="48" color="#d9d9d9" />
           <text class="empty-text">暂无充电记录</text>
         </view>
@@ -61,30 +68,73 @@ const vin = ref('')
 const logs = ref([])
 const focusLat = ref(39.9042)
 const focusLng = ref(116.4074)
+const mapScale = ref(11)
 
 const centerLat = computed(() => focusLat.value)
 const centerLng = computed(() => focusLng.value)
 
-const markers = computed(() => {
-  return logs.value.filter(log => log.latitude && log.longitude).map((log, index) => ({
-    id: log.id || index + 1,
-    latitude: log.latitude,
-    longitude: log.longitude,
-    title: log.address || log.location || '充电位置',
-    iconPath: '/static/charging-marker.png',
-    width: 30,
-    height: 30,
-    callout: {
-      content: log.charge_type === 'DC' ? '⚡快充' : '🔌慢充',
-      color: '#ffffff',
-      fontSize: 12,
-      borderRadius: 6,
-      bgColor: log.charge_type === 'DC' ? themeStore.colors.primary : '#52c41a',
-      padding: 6,
-      display: 'ALWAYS'
+const groupedLocations = computed(() => {
+  const locationMap = {}
+  logs.value.forEach(log => {
+    if (!log.latitude || !log.longitude) return
+    const key = `${log.latitude.toFixed(4)}_${log.longitude.toFixed(4)}`
+    if (!locationMap[key]) {
+      locationMap[key] = {
+        key,
+        latitude: log.latitude,
+        longitude: log.longitude,
+        address: log.address || log.location || '未知位置',
+        count: 0,
+        totalKwh: 0,
+        isDC: false,
+        latestTime: log.start_time,
+        logIds: []
+      }
     }
-  }))
+    locationMap[key].count++
+    locationMap[key].totalKwh += log.charge_kwh || 0
+    locationMap[key].logIds.push(log.id)
+    if (log.charge_type === 'DC') locationMap[key].isDC = true
+    if (log.start_time && (!locationMap[key].latestTime || new Date(log.start_time) > new Date(locationMap[key].latestTime))) {
+      locationMap[key].latestTime = log.start_time
+    }
+  })
+  return Object.values(locationMap).sort((a, b) => new Date(b.latestTime) - new Date(a.latestTime))
 })
+
+const markers = computed(() => {
+  return groupedLocations.value.map((loc, idx) => {
+    const icon = loc.isDC ? '⚡' : '🔌'
+    const label = loc.count > 1 ? `${icon}${loc.count}` : icon
+    return {
+      id: idx + 1,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      title: loc.address,
+      iconPath: '/static/marker-transparent.png',
+      width: 1,
+      height: 1,
+      callout: {
+        content: label,
+        color: '#ffffff',
+        fontSize: 14,
+        borderRadius: 20,
+        bgColor: loc.isDC ? '#2563EB' : '#389e0d',
+        padding: 8,
+        display: 'ALWAYS',
+        textAlign: 'center'
+      }
+    }
+  })
+})
+
+const onMarkerTap = (e) => {
+  const markerId = (e.markerId || e.detail?.markerId) - 1
+  if (markerId >= 0 && markerId < groupedLocations.value.length) {
+    const loc = groupedLocations.value[markerId]
+    focusLocation(loc)
+  }
+}
 
 onMounted(() => {
   const pages = getCurrentPages()
@@ -98,17 +148,19 @@ onMounted(() => {
 const loadData = () => {
   getChargingLogs(vin.value).then((res) => {
     logs.value = res.data || []
-    if (logs.value.length > 0 && logs.value[0].latitude) {
-      focusLat.value = logs.value[0].latitude
-      focusLng.value = logs.value[0].longitude
+    const withCoords = logs.value.filter(l => l.latitude && l.longitude)
+    if (withCoords.length > 0) {
+      focusLat.value = withCoords[0].latitude
+      focusLng.value = withCoords[0].longitude
     }
   })
 }
 
-const focusLocation = (log) => {
-  if (log.latitude && log.longitude) {
-    focusLat.value = log.latitude
-    focusLng.value = log.longitude
+const focusLocation = (loc) => {
+  if (loc.latitude && loc.longitude) {
+    focusLat.value = loc.latitude
+    focusLng.value = loc.longitude
+    mapScale.value = 14
   }
 }
 
@@ -147,6 +199,7 @@ const formatDate = (dateStr) => {
   margin-top: -24rpx;
   position: relative;
   box-shadow: var(--shadow-card);
+  overflow: hidden;
 }
 
 .list-header {
@@ -154,6 +207,7 @@ const formatDate = (dateStr) => {
   justify-content: space-between;
   align-items: center;
   padding: 28rpx 32rpx 16rpx;
+  flex-shrink: 0;
 
   .header-left {
     display: flex;
@@ -179,9 +233,9 @@ const formatDate = (dateStr) => {
 
   .header-count {
     .count-text {
-      font-size: 24rpx;
+      font-size: 22rpx;
       color: var(--text-tertiary);
-      padding: 6rpx 16rpx;
+      padding: 6rpx 14rpx;
       background: var(--bg-card-secondary);
       border-radius: 12rpx;
     }
@@ -191,6 +245,8 @@ const formatDate = (dateStr) => {
 .log-scroll {
   flex: 1;
   padding: 0 32rpx 32rpx;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .log-item {
@@ -198,6 +254,8 @@ const formatDate = (dateStr) => {
   align-items: center;
   padding: 20rpx 0;
   border-bottom: 1rpx solid var(--border-divider);
+  width: 100%;
+  box-sizing: border-box;
 
   &:last-child {
     border-bottom: none;
@@ -215,8 +273,9 @@ const formatDate = (dateStr) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 20rpx;
+  margin-right: 16rpx;
   flex-shrink: 0;
+  position: relative;
 
   &.dc {
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
@@ -225,51 +284,82 @@ const formatDate = (dateStr) => {
   &.ac {
     background: linear-gradient(135deg, #52c41a, #73d13d);
   }
+
+  .badge-count {
+    position: absolute;
+    top: -8rpx;
+    right: -8rpx;
+    min-width: 28rpx;
+    height: 28rpx;
+    line-height: 28rpx;
+    text-align: center;
+    font-size: 18rpx;
+    font-weight: 700;
+    color: #fff;
+    background: #ff4d4f;
+    border-radius: 14rpx;
+    padding: 0 6rpx;
+  }
 }
 
 .log-center {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+
+  .log-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12rpx;
+    margin-bottom: 8rpx;
+  }
 
   .log-address {
     font-size: 28rpx;
     color: var(--text-primary);
     font-weight: 500;
-    display: block;
-    margin-bottom: 8rpx;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .log-kwh {
+    font-size: 26rpx;
+    font-weight: 800;
+    color: var(--color-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+
+    .log-unit {
+      font-size: 18rpx;
+      font-weight: 400;
+      color: var(--text-placeholder);
+    }
   }
 
   .log-meta {
     display: flex;
     align-items: center;
     gap: 6rpx;
+    flex-wrap: nowrap;
 
     .log-time {
       font-size: 22rpx;
       color: var(--text-placeholder);
+      flex-shrink: 0;
     }
-  }
-}
 
-.log-right {
-  margin-left: 16rpx;
-  text-align: right;
-  flex-shrink: 0;
-
-  .log-kwh {
-    font-size: 32rpx;
-    font-weight: 800;
-    color: var(--color-primary);
-    display: block;
-  }
-
-  .log-unit {
-    font-size: 20rpx;
-    color: var(--text-placeholder);
-    display: block;
+    .log-count-tag {
+      font-size: 20rpx;
+      color: var(--color-primary);
+      background: rgba(37, 99, 235, 0.1);
+      padding: 2rpx 10rpx;
+      border-radius: 8rpx;
+      flex-shrink: 0;
+    }
   }
 }
 

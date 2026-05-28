@@ -163,6 +163,14 @@ const vehicleDataStore = useVehicleData()
 const vehicleWSData = computed(() => vehicleDataStore.data)
 const vehicleWSStateOutput = computed(() => vehicleDataStore.stateOutput)
 
+const vin = ref('')
+const state = ref({})
+const stateOutput = ref(null)
+const locationAuthorized = ref(false)
+const mapStyle = ref('standard')
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || ''
+let refreshTimer = null
+
 watch(() => themeStore.resolvedTheme, (theme) => {
   if ((theme === 'dark' || theme === 'visionpro') && mapStyle.value === 'standard') {
     mapStyle.value = 'dark'
@@ -173,21 +181,22 @@ watch(() => vehicleWSData.value, (wsData) => {
   if (!wsData || !Object.keys(wsData).length) return
   const latitude = wsData.latitude
   const longitude = wsData.longitude
+  const currentState = state.value
   if (latitude && longitude && latitude !== 0 && longitude !== 0) {
     locationAuthorized.value = true
     state.value = {
-      ...state.value,
+      ...currentState,
       latitude,
       longitude,
-      heading: wsData.heading ?? state.value.heading,
-      speed: wsData.speed ?? state.value.speed,
-      gear: wsData.gear ?? state.value.gear,
-      driving: wsData.driving ?? state.value.driving,
-      charging: wsData.charging ?? state.value.charging,
-      soc: wsData.soc ?? state.value.soc,
-      range_km: wsData.range_km ?? state.value.range_km,
+      heading: wsData.heading ?? currentState.heading,
+      speed: wsData.speed ?? currentState.speed,
+      gear: wsData.gear ?? currentState.gear,
+      driving: wsData.driving ?? currentState.driving,
+      charging: wsData.charging ?? currentState.charging,
+      soc: wsData.soc ?? currentState.soc,
+      range_km: wsData.range_km ?? currentState.range_km,
       online: isVehicleOnline(vehicleWSStateOutput.value),
-      state: vehicleWSStateOutput.value?.state?.online_state || state.value.state,
+      state: vehicleWSStateOutput.value?.state?.online_state || currentState.state,
       updated_at: new Date().toISOString()
     }
   }
@@ -195,14 +204,6 @@ watch(() => vehicleWSData.value, (wsData) => {
     stateOutput.value = vehicleWSStateOutput.value
   }
 }, { deep: true })
-
-const vin = ref('')
-const state = ref({})
-const stateOutput = ref(null)
-const locationAuthorized = ref(false)
-const mapStyle = ref('standard')
-const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || ''
-let refreshTimer = null
 
 const currentLayerStyle = computed(() => {
   const isDark = mapStyle.value === 'dark' || themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro'
@@ -357,19 +358,19 @@ const formatTime = (t) => {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-const getStatusText = (state) => {
-  if (!state) return '离线'
-  return getDisplayStateLabel(stateOutput.value, vehicleData.value)
+const getStatusText = (s) => {
+  if (!s) return '离线'
+  return getDisplayStateLabel(stateOutput.value, vehicleWSData.value)
 }
 
-const getStatusClass = (state) => {
-  if (!state) return 'offline'
-  if (state.state) return state.state
+const getStatusClass = (s) => {
+  if (!s) return 'offline'
+  if (s.state) return s.state
   return 'offline'
 }
 
-const getStatusIcon = (state) => {
-  if (!state) return 'Ellipse'
+const getStatusIcon = (s) => {
+  if (!s) return 'Ellipse'
   return getOnlineStateIcon(stateOutput.value)
 }
 </script>
