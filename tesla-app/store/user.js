@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, getUserInfo } from '@/api/user.js'
+import { login, getUserInfo, refreshToken as refreshTokenApi } from '@/api/user.js'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(uni.getStorageSync('token') || '')
+  const refreshToken = ref(uni.getStorageSync('refreshToken') || '')
   const expiresAt = ref(uni.getStorageSync('tokenExpiresAt') || 0)
   const userInfo = ref(uni.getStorageSync('userInfo') || null)
   const currentVehicle = ref(uni.getStorageSync('currentVehicle') || null)
@@ -12,7 +13,6 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => {
     if (!token.value) return false
     if (expiresAt.value && Date.now() / 1000 > expiresAt.value) {
-      clearAuth()
       return false
     }
     return true
@@ -24,9 +24,13 @@ export const useUserStore = defineStore('user', () => {
     return remaining > 0 && remaining < 300
   })
 
-  const setToken = (newToken, newExpiresAt) => {
+  const setToken = (newToken, newRefreshToken, newExpiresAt) => {
     token.value = newToken
     uni.setStorageSync('token', newToken)
+    if (newRefreshToken) {
+      refreshToken.value = newRefreshToken
+      uni.setStorageSync('refreshToken', newRefreshToken)
+    }
     if (newExpiresAt) {
       expiresAt.value = newExpiresAt
       uni.setStorageSync('tokenExpiresAt', newExpiresAt)
@@ -45,10 +49,12 @@ export const useUserStore = defineStore('user', () => {
 
   const clearAuth = () => {
     token.value = ''
+    refreshToken.value = ''
     expiresAt.value = 0
     userInfo.value = null
     currentVehicle.value = null
     uni.removeStorageSync('token')
+    uni.removeStorageSync('refreshToken')
     uni.removeStorageSync('tokenExpiresAt')
     uni.removeStorageSync('userInfo')
     uni.removeStorageSync('currentVehicle')
@@ -56,13 +62,22 @@ export const useUserStore = defineStore('user', () => {
 
   const loginAction = async (data) => {
     const res = await login(data)
-    setToken(res.data.token, res.data.expiresAt)
+    setToken(res.data.token, res.data.refreshToken, res.data.expiresAt)
     setUserInfo(res.data.user)
-    // 保存用户名以便下次自动填充
     if (data.username) {
       savedUsername.value = data.username
       uni.setStorageSync('savedUsername', data.username)
     }
+    return res
+  }
+
+  const refreshTokenAction = async () => {
+    if (!refreshToken.value) {
+      clearAuth()
+      throw new Error('No refresh token available')
+    }
+    const res = await refreshTokenApi({ refresh_token: refreshToken.value })
+    setToken(res.data.token, res.data.refreshToken, res.data.expiresAt)
     return res
   }
 
@@ -79,7 +94,6 @@ export const useUserStore = defineStore('user', () => {
   const checkTokenExpiry = () => {
     if (!token.value) return false
     if (expiresAt.value && Date.now() / 1000 > expiresAt.value) {
-      clearAuth()
       return false
     }
     return true
@@ -87,6 +101,7 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     token,
+    refreshToken,
     expiresAt,
     userInfo,
     currentVehicle,
@@ -98,6 +113,7 @@ export const useUserStore = defineStore('user', () => {
     setCurrentVehicle,
     clearAuth,
     loginAction,
+    refreshTokenAction,
     fetchUserInfo,
     logout,
     checkTokenExpiry

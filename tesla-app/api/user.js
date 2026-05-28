@@ -23,3 +23,7 @@ export const changePassword = (data) => {
 export const updateUserInfo = (data) => {
   return post('/api/user/update', data)
 }
+
+export const refreshToken = (data) => {
+  return post('/api/refresh-token', data)
+}

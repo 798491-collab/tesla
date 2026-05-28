@@ -24,8 +24,9 @@ CREATE TABLE IF NOT EXISTS tesla_users (
 CREATE TABLE IF NOT EXISTS tesla_user_tokens (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT UNSIGNED NOT NULL,
-    token TEXT NOT NULL,
-    expired_at BIGINT NOT NULL,
+    token TEXT NOT NULL COMMENT 'Access Token',
+    refresh_token TEXT COMMENT 'Refresh Token',
+    expired_at BIGINT NOT NULL COMMENT 'Access Token过期时间',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id),
     INDEX idx_expired_at (expired_at),

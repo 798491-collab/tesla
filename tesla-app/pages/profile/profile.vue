@@ -46,6 +46,22 @@
 
         <view class="menu-section">
           <view class="section-title">
+            <text class="section-title-text">车辆工具</text>
+          </view>
+          <view class="menu-card">
+            <view class="menu-item" @click="goDashcam">
+              <view class="menu-icon-wrap dashcam-icon">
+                <Icon name="Videocam" :size="22" color="#5BE7C4" />
+              </view>
+              <text class="menu-label">行车记录仪</text>
+              <text class="menu-value">本地视频+GPS融合</text>
+              <Icon name="ChevronForward" :size="16" themeColor="chevron" />
+            </view>
+          </view>
+        </view>
+
+        <view class="menu-section">
+          <view class="section-title">
             <text class="section-title-text">偏好设置</text>
           </view>
           <view class="menu-card">
@@ -162,6 +178,10 @@ const changePassword = () => {
 
 const bleDebug = () => {
   uni.navigateTo({ url: '/pages/debug/ble' })
+}
+
+const goDashcam = () => {
+  uni.navigateTo({ url: '/pages/dashcam/index' })
 }
 
 const logout = () => {
@@ -318,6 +338,10 @@ const logout = () => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+
+  &.dashcam-icon {
+    background: rgba(91, 231, 196, 0.12);
+  }
 }
 
 .menu-label {

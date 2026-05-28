@@ -20,11 +20,12 @@ type User struct {
 func (User) TableName() string { return "tesla_users" }
 
 type UserToken struct {
-	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID    uint64    `gorm:"index" json:"user_id"`
-	Token     string    `gorm:"type:text" json:"-"`
-	ExpiredAt int64     `json:"expired_at"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID       uint64    `gorm:"index" json:"user_id"`
+	Token        string    `gorm:"type:text" json:"-"`
+	RefreshToken string    `gorm:"type:text" json:"-"`
+	ExpiredAt    int64     `json:"expired_at"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 func (UserToken) TableName() string { return "tesla_user_tokens" }

@@ -7,7 +7,6 @@ import (
 	"tesla-server/internal/database"
 	"tesla-server/internal/middleware"
 	"tesla-server/models"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -94,18 +93,17 @@ func Login(c *gin.Context) {
 	}
 
 	cfg := config.Load()
-	token, err := auth.GenerateToken(user.ID, user.Username, cfg.JWT.ExpiresIn)
+	tokenPair, err := auth.GenerateTokenPair(user.ID, user.Username, cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "Failed to generate token"})
 		return
 	}
 
-	expiresAt := time.Now().Add(time.Duration(cfg.JWT.ExpiresIn) * time.Second).Unix()
-
 	userToken := models.UserToken{
-		UserID:    user.ID,
-		Token:     token,
-		ExpiredAt: expiresAt,
+		UserID:       user.ID,
+		Token:        tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiredAt:    tokenPair.ExpiresAt,
 	}
 	database.DB.Create(&userToken)
 
@@ -113,9 +111,10 @@ func Login(c *gin.Context) {
 		"code":    200,
 		"message": "Login successful",
 		"data": gin.H{
-			"token":     token,
-			"expires":   cfg.JWT.ExpiresIn,
-			"expiresAt": expiresAt,
+			"token":        tokenPair.AccessToken,
+			"refreshToken": tokenPair.RefreshToken,
+			"expires":      cfg.JWT.ExpiresIn,
+			"expiresAt":    tokenPair.ExpiresAt,
 			"user": gin.H{
 				"id":       user.ID,
 				"username": user.Username,
@@ -138,6 +137,74 @@ func Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "Logout successful",
+	})
+}
+
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+func RefreshToken(c *gin.Context) {
+	var req RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "refresh_token is required"})
+		return
+	}
+
+	claims, err := auth.ParseToken(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "Invalid or expired refresh token"})
+		return
+	}
+
+	if claims.Type != "refresh" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "Invalid token type"})
+		return
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, claims.UserID).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "User not found"})
+		return
+	}
+
+	if user.Status != 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "User is disabled"})
+		return
+	}
+
+	var userToken models.UserToken
+	if err := database.DB.Where("user_id = ? AND refresh_token = ?", claims.UserID, req.RefreshToken).First(&userToken).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "Refresh token not found or revoked"})
+		return
+	}
+
+	cfg := config.Load()
+	tokenPair, err := auth.GenerateTokenPair(user.ID, user.Username, cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "Failed to generate token"})
+		return
+	}
+
+	database.DB.Where("id = ?", userToken.ID).Delete(&models.UserToken{})
+
+	newUserToken := models.UserToken{
+		UserID:       user.ID,
+		Token:        tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiredAt:    tokenPair.ExpiresAt,
+	}
+	database.DB.Create(&newUserToken)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "Token refreshed successfully",
+		"data": gin.H{
+			"token":        tokenPair.AccessToken,
+			"refreshToken": tokenPair.RefreshToken,
+			"expires":      cfg.JWT.ExpiresIn,
+			"expiresAt":    tokenPair.ExpiresAt,
+		},
 	})
 }
 

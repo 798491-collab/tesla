@@ -36,6 +36,7 @@ func Setup(r *gin.Engine) {
 	{
 		api.POST("/register", middleware.RateLimitAuth(), user.Register)
 		api.POST("/login", middleware.RateLimitAuth(), user.Login)
+		api.POST("/refresh-token", user.RefreshToken)
 		api.GET("/tesla/auth", tesla.GetAuthURL)
 		api.GET("/tesla/callback", tesla.Callback)
 		api.GET("/tesla/auth_data", tesla.GetAuthData)
@@ -60,24 +61,25 @@ func Setup(r *gin.Engine) {
 			authorized.GET("/tesla/vehicle/:vin/fleet-status", tesla.GetFleetStatus)
 			authorized.GET("/tesla/vehicle/:vin/pairing-url", tesla.GetVirtualKeyPairingURL)
 			authorized.DELETE("/tesla/unbind/:vin", handleUnbindVehicle)
-		authorized.POST("/tesla/refresh-vehicle-info", tesla.RefreshVehicleInfo)
+			authorized.POST("/tesla/refresh-vehicle-info", tesla.RefreshVehicleInfo)
 
 			authorized.GET("/vehicle/:vin/state", checkVehicleOwner, getVehicleState)
-		authorized.POST("/vehicle/:vin/refresh", checkVehicleOwner, refreshVehicleState)
-		authorized.POST("/vehicle/:vin/wake", checkVehicleOwner, wakeVehicle)
-		authorized.GET("/vehicle/:vin/data", checkVehicleOwner, getVehicleData)
+			authorized.POST("/vehicle/:vin/refresh", checkVehicleOwner, refreshVehicleState)
+			authorized.POST("/vehicle/:vin/wake", checkVehicleOwner, wakeVehicle)
+			authorized.GET("/vehicle/:vin/data", checkVehicleOwner, getVehicleData)
 
 			authorized.GET("/trip/:vin/logs", checkVehicleOwner, getTripLogs)
-		authorized.GET("/trip/:vin/stats", checkVehicleOwner, getTripStats)
-		authorized.GET("/trip/:vin/monthly-list", checkVehicleOwner, getMonthlyTripList)
-		authorized.GET("/trip/:vin/monthly-stats", checkVehicleOwner, getMonthlyTripStats)
-		authorized.GET("/trip/:vin/points/:tripId", checkVehicleOwner, getTripPointsByVIN)
+			authorized.GET("/trip/:vin/stats", checkVehicleOwner, getTripStats)
+			authorized.GET("/trip/:vin/monthly-list", checkVehicleOwner, getMonthlyTripList)
+			authorized.GET("/trip/:vin/monthly-stats", checkVehicleOwner, getMonthlyTripStats)
+			authorized.GET("/trip/:vin/points/:tripId", checkVehicleOwner, getTripPointsByVIN)
+			authorized.GET("/vehicle/:vin/tracks", checkVehicleOwner, getVehicleTracks)
 
 			authorized.GET("/charging/:vin/logs", checkVehicleOwner, getChargingLogs)
-		authorized.GET("/charging/:vin/stats", checkVehicleOwner, getChargingStats)
-		authorized.GET("/charging/:vin/monthly-list", checkVehicleOwner, getMonthlyChargingList)
-		authorized.GET("/charging/:vin/monthly-stats", checkVehicleOwner, getMonthlyChargingStats)
-		authorized.POST("/charging/log/:id/price", checkChargingLogOwner, updateChargingPrice)
+			authorized.GET("/charging/:vin/stats", checkVehicleOwner, getChargingStats)
+			authorized.GET("/charging/:vin/monthly-list", checkVehicleOwner, getMonthlyChargingList)
+			authorized.GET("/charging/:vin/monthly-stats", checkVehicleOwner, getMonthlyChargingStats)
+			authorized.POST("/charging/log/:id/price", checkChargingLogOwner, updateChargingPrice)
 
 			authorized.GET("/ai/trip/:vin/:refId", checkVehicleOwner, ai.GetTripAnalysis)
 			authorized.GET("/ai/charging/:vin/:refId", checkVehicleOwner, ai.GetChargingAnalysis)
@@ -681,4 +683,50 @@ func getChargingStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": stats})
+}
+
+func getVehicleTracks(c *gin.Context) {
+	vin := c.Param("vin")
+
+	startStr := c.Query("start")
+	endStr := c.Query("end")
+
+	var startTime, endTime time.Time
+	if startStr != "" {
+		startTime, _ = time.Parse("2006-01-02", startStr)
+	}
+	if endStr != "" {
+		endTime, _ = time.Parse("2006-01-02", endStr)
+	}
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+	if startTime.IsZero() {
+		startTime = endTime.AddDate(0, 0, -7)
+	}
+
+	points, err := trip.GetVehicleTrackPoints(vin, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	type trackPoint struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+		Speed     float64 `json:"speed"`
+		Timestamp int64   `json:"timestamp"`
+	}
+
+	tracks := make([]trackPoint, 0, len(points))
+	for _, p := range points {
+		tracks = append(tracks, trackPoint{
+			Latitude:  p.Latitude,
+			Longitude: p.Longitude,
+			Speed:     p.Speed,
+			Timestamp: p.RecordedAt.UnixMilli(),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": tracks})
 }

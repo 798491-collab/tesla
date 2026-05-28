@@ -55,8 +55,9 @@ type TeslaConfig struct {
 }
 
 type JWTConfig struct {
-	Secret    string
-	ExpiresIn int
+	Secret           string
+	ExpiresIn        int
+	RefreshExpiresIn int
 }
 
 type MapConfig struct {
@@ -107,8 +108,9 @@ func Load() *Config {
 			PartnerDomain:       getEnv("TESLA_PARTNER_DOMAIN", ""),
 		},
 		JWT: JWTConfig{
-			Secret:    getEnv("JWT_SECRET", "your-secret-key"),
-			ExpiresIn: getEnvAsInt("JWT_EXPIRES_IN", 86400),
+			Secret:           getEnv("JWT_SECRET", "your-secret-key"),
+			ExpiresIn:        getEnvAsInt("JWT_EXPIRES_IN", 7200),
+			RefreshExpiresIn: getEnvAsInt("JWT_REFRESH_EXPIRES_IN", 2592000),
 		},
 		Map: MapConfig{
 			TencentKey: getEnv("TENCENT_MAP_KEY", ""),

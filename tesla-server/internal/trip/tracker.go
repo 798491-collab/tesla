@@ -381,6 +381,14 @@ func GetTripPoints(tripID uint64) ([]models.TripPoint, error) {
 	return points, err
 }
 
+func GetVehicleTrackPoints(vin string, startTime, endTime time.Time) ([]models.TripPoint, error) {
+	var points []models.TripPoint
+	err := database.DB.Where("vin = ? AND recorded_at >= ? AND recorded_at <= ?", vin, startTime, endTime).
+		Order("recorded_at ASC").
+		Find(&points).Error
+	return points, err
+}
+
 func GetTripStats(vin string, startDate, endDate time.Time) (map[string]interface{}, error) {
 	var trips []models.TripLog
 	err := database.DB.Where("vin = ? AND start_time >= ? AND start_time <= ?", vin, startDate, endDate).

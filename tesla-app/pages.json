@@ -181,6 +181,34 @@
         "navigationBarTitleText": "车辆AI分析报告",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/dashcam/index",
+      "style": {
+        "navigationBarTitleText": "行车记录仪",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/dashcam/player",
+      "style": {
+        "navigationBarTitleText": "视频回放",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/dashcam/map",
+      "style": {
+        "navigationBarTitleText": "轨迹地图",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/dashcam/timeline",
+      "style": {
+        "navigationBarTitleText": "时间线",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {
