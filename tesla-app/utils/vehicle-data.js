@@ -149,6 +149,12 @@ function onWSVehicleState(data) {
   if (data.charge_port_door_open !== undefined) vehicleStore.data.charge_port_door_open = data.charge_port_door_open
   if (data.windows_open !== undefined) vehicleStore.data.windows_open = data.windows_open
   if (data.driving !== undefined) vehicleStore.data.driving = data.driving
+  if (data.media_playback_status !== undefined) vehicleStore.data.media_playback_status = data.media_playback_status
+  if (data.media_audio_source !== undefined) vehicleStore.data.media_audio_source = data.media_audio_source
+  if (data.media_volume !== undefined) vehicleStore.data.media_volume = data.media_volume
+  if (data.now_playing_title !== undefined) vehicleStore.data.now_playing_title = data.now_playing_title
+  if (data.now_playing_artist !== undefined) vehicleStore.data.now_playing_artist = data.now_playing_artist
+  if (data.now_playing_album !== undefined) vehicleStore.data.now_playing_album = data.now_playing_album
   if (data.state_output) {
     vehicleStore.stateOutput = data.state_output
   }

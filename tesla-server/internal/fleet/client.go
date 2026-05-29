@@ -139,7 +139,29 @@ type VehicleDataResponse struct {
 	DriveState   DriveState    `json:"drive_state"`
 	ClimateState ClimateState  `json:"climate_state"`
 	GUISettings  GUISettings   `json:"gui_settings"`
+	MediaState   MediaState    `json:"media_state"`
+	MediaInfo    MediaInfo     `json:"media_info"`
 	// 注意：closures_state 在中国区很多账号不支持，已移除
+}
+
+// MediaState 媒体状态（REST API vehicle_data 的 media_state 端点）
+// 注意：REST API 的 media_state 只返回 remote_control_enabled
+// 丰富的媒体数据（now_playing 等）通过 Fleet Telemetry 的 media_info 类别推送
+type MediaState struct {
+	RemoteControlEnabled bool `json:"remote_control_enabled"`
+}
+
+// MediaInfo 媒体信息（Fleet Telemetry media_info 类别）
+// REST API 的 vehicle_data 可能也支持 media_info 端点返回这些数据
+type MediaInfo struct {
+	PlaybackStatus  string `json:"media_playback_status"`
+	AudioSource     string `json:"media_audio_source"`
+	Volume          int    `json:"media_volume"`
+	NowPlayingTitle  string `json:"now_playing_title"`
+	NowPlayingArtist string `json:"now_playing_artist"`
+	NowPlayingAlbum  string `json:"now_playing_album"`
+	NowPlayingDuration int  `json:"now_playing_duration"`
+	NowPlayingElapsed  int  `json:"now_playing_elapsed"`
 }
 
 // VehicleData 完整车辆数据
@@ -211,6 +233,13 @@ type SimpleVehicleData struct {
 	BatteryTemp    float64 `json:"battery_temp"`
 	ChargerPhases  int     `json:"charger_phases"`
 	Lightweight    bool    `json:"lightweight"`
+	MediaPlaybackStatus string `json:"media_playback_status"`
+	MediaAudioSource    string `json:"media_audio_source"`
+	MediaVolume         int    `json:"media_volume"`
+	NowPlayingTitle     string `json:"now_playing_title"`
+	NowPlayingArtist    string `json:"now_playing_artist"`
+	NowPlayingAlbum     string `json:"now_playing_album"`
+	CenterDisplayState  int    `json:"center_display_state"`
 	StateOutput    *state.VehicleStateOutput `json:"state_output,omitempty"`
 }
 
@@ -293,7 +322,7 @@ func GetVehicleData(accessToken, vehicleTag string) (*VehicleData, error) {
 func getVehicleDataWithRetry(accessToken, vehicleTag string, retryCount int) (*VehicleData, error) {
 	cfg := config.Load()
 	// 使用推荐的 endpoints（移除 closures_state，中国区不支持）
-	url := fmt.Sprintf("%s/api/1/vehicles/%s/vehicle_data?endpoints=location_data%%3Bcharge_state%%3Bdrive_state%%3Bvehicle_state%%3Bclimate_state%%3Bgui_settings%%3Bvehicle_config",
+	url := fmt.Sprintf("%s/api/1/vehicles/%s/vehicle_data?endpoints=location_data%%3Bcharge_state%%3Bdrive_state%%3Bvehicle_state%%3Bclimate_state%%3Bgui_settings%%3Bvehicle_config%%3Bmedia_state%%3Bmedia_info",
 		cfg.Tesla.FleetAPIURL, vehicleTag)
 
 	log.Printf("[Fleet API] Fetching vehicle_data (vehicle_tag: %s)", vehicleTag)
@@ -570,6 +599,13 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		BatteryTemp:   data.Response.ClimateState.BatteryTemp,
 		ChargerPhases: 0,
 		Lightweight:   false,
+		MediaPlaybackStatus: data.Response.MediaInfo.PlaybackStatus,
+		MediaAudioSource:    data.Response.MediaInfo.AudioSource,
+		MediaVolume:         data.Response.MediaInfo.Volume,
+		NowPlayingTitle:     data.Response.MediaInfo.NowPlayingTitle,
+		NowPlayingArtist:    data.Response.MediaInfo.NowPlayingArtist,
+		NowPlayingAlbum:     data.Response.MediaInfo.NowPlayingAlbum,
+		CenterDisplayState:  data.Response.VehicleState.CenterDisplayState,
 	}, nil
 }
 

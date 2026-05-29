@@ -87,3 +87,35 @@ export const mirrorUnfold = (vin) => {
 export const lightControl = (vin, data) => {
   return post('/api/vcp/light_control', { vin, ...data })
 }
+
+export const mediaTogglePlayback = (vin) => {
+  return post('/api/vcp/media_toggle_playback', { vin })
+}
+
+export const mediaNextTrack = (vin) => {
+  return post('/api/vcp/media_next_track', { vin })
+}
+
+export const mediaPrevTrack = (vin) => {
+  return post('/api/vcp/media_prev_track', { vin })
+}
+
+export const mediaNextFav = (vin) => {
+  return post('/api/vcp/media_next_fav', { vin })
+}
+
+export const mediaPrevFav = (vin) => {
+  return post('/api/vcp/media_prev_fav', { vin })
+}
+
+export const mediaVolumeUp = (vin) => {
+  return post('/api/vcp/media_volume_up', { vin })
+}
+
+export const mediaVolumeDown = (vin) => {
+  return post('/api/vcp/media_volume_down', { vin })
+}
+
+export const adjustVolume = (vin, volume) => {
+  return post('/api/vcp/adjust_volume', { vin, volume })
+}

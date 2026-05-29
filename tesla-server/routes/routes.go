@@ -109,6 +109,14 @@ func Setup(r *gin.Engine) {
 			authorized.POST("/vcp/remote_seat_heater", vcp.RemoteSeatHeater)
 			authorized.POST("/vcp/remote_steering_wheel_heater", vcp.RemoteSteeringWheelHeater)
 			authorized.GET("/vcp/commands", vcp.GetCommands)
+			authorized.POST("/vcp/media_toggle_playback", vcp.MediaTogglePlayback)
+			authorized.POST("/vcp/media_next_track", vcp.MediaNextTrack)
+			authorized.POST("/vcp/media_prev_track", vcp.MediaPrevTrack)
+			authorized.POST("/vcp/media_next_fav", vcp.MediaNextFav)
+			authorized.POST("/vcp/media_prev_fav", vcp.MediaPrevFav)
+			authorized.POST("/vcp/media_volume_up", vcp.MediaVolumeUp)
+			authorized.POST("/vcp/media_volume_down", vcp.MediaVolumeDown)
+			authorized.POST("/vcp/adjust_volume", vcp.AdjustVolume)
 		}
 	}
 }

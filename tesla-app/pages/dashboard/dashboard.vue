@@ -112,6 +112,47 @@
                 </view>
             </view>
 
+            <!-- 媒体播放器 -->
+            <view class="media-player" v-if="currentVehicle">
+                <view class="media-player-inner">
+                    <view class="media-top-row">
+                        <view class="media-album-art" :class="{ playing: isMediaPlaying }">
+                            <Icon :name="mediaAudioSource === 'Radio' ? 'Radio' : (mediaAudioSource === 'Bluetooth' ? 'Bluetooth' : 'MusicNote')" :size="28" :color="isMediaPlaying ? '#fff' : ''" :themeColor="isMediaPlaying ? '' : 'primary'" />
+                        </view>
+                        <view class="media-track-info">
+                            <text class="media-track-title">{{ nowPlayingTitle || '未在播放' }}</text>
+                            <view class="media-track-meta">
+                                <text class="media-track-artist" v-if="nowPlayingArtist">{{ nowPlayingArtist }}</text>
+                                <text class="media-track-source" v-if="mediaAudioSource">{{ mediaSourceLabel }}</text>
+                                <text class="media-track-artist" v-if="!nowPlayingArtist && !mediaAudioSource">点击控制车载媒体</text>
+                            </view>
+                        </view>
+                    </view>
+                    <view class="media-transport">
+                        <view class="media-ctrl" @click="handleMediaPrev">
+                            <text class="media-ctrl-icon">⏮</text>
+                        </view>
+                        <view class="media-ctrl play" :class="{ active: isMediaPlaying }" @click="handleMediaToggle">
+                            <text class="media-ctrl-icon">{{ isMediaPlaying ? '⏸' : '▶' }}</text>
+                        </view>
+                        <view class="media-ctrl" @click="handleMediaNext">
+                            <text class="media-ctrl-icon">⏭</text>
+                        </view>
+                    </view>
+                    <view class="media-volume-row">
+                        <view class="media-vol-btn" @click="handleVolumeDown">
+                            <text class="media-vol-icon">🔉</text>
+                        </view>
+                        <view class="media-vol-track">
+                            <view class="media-vol-fill" :style="{ width: mediaVolume + '%' }"></view>
+                        </view>
+                        <view class="media-vol-btn" @click="handleVolumeUp">
+                            <text class="media-vol-icon">🔊</text>
+                        </view>
+                    </view>
+                </view>
+            </view>
+
             <!-- 六宫格菜单 -->
             <view class="menu-grid" v-if="currentVehicle">
                 <view class="menu-grid-row">
@@ -296,7 +337,12 @@
         doorUnlock,
         autoConditioningStart,
         autoConditioningStop,
-        actuateTrunk
+        actuateTrunk,
+        mediaTogglePlayback,
+        mediaNextTrack,
+        mediaPrevTrack,
+        mediaVolumeUp,
+        mediaVolumeDown
     } from '@/api/control.js'
     import {
         getVehicleState,
@@ -407,6 +453,17 @@
     const trunkOpen = computed(() => vehicleData.value?.trunk_open || vehicleData.value?.frunk_open)
     const locked = computed(() => vehicleData.value?.locked !== false)
     const climateOn = computed(() => vehicleData.value?.is_ac_on)
+    const mediaPlaybackStatus = computed(() => vehicleData.value?.media_playback_status || 'Stopped')
+    const mediaAudioSource = computed(() => vehicleData.value?.media_audio_source || '')
+    const mediaVolume = computed(() => vehicleData.value?.media_volume || 0)
+    const nowPlayingTitle = computed(() => vehicleData.value?.now_playing_title || '')
+    const nowPlayingArtist = computed(() => vehicleData.value?.now_playing_artist || '')
+    const isMediaPlaying = computed(() => mediaPlaybackStatus.value === 'Playing')
+    const mediaSourceLabel = computed(() => {
+        const sourceMap = { Radio: '收音机', Bluetooth: '蓝牙', Streaming: '流媒体', Caraoke: '卡拉OK' }
+        return sourceMap[mediaAudioSource.value] || mediaAudioSource.value || '未知'
+    })
+    const hasMediaInfo = computed(() => nowPlayingTitle.value || mediaAudioSource.value)
 
     const stateText = computed(() => getDisplayStateLabel(stateOutput.value, vehicleData.value))
 
@@ -565,6 +622,26 @@
 
     const toggleTrunk = async () => {
         await executeCommand(actuateTrunk, '后备箱操作')
+    }
+
+    const handleMediaToggle = async () => {
+        await executeCommand(mediaTogglePlayback, isMediaPlaying.value ? '暂停' : '播放')
+    }
+
+    const handleMediaNext = async () => {
+        await executeCommand(mediaNextTrack, '下一首')
+    }
+
+    const handleMediaPrev = async () => {
+        await executeCommand(mediaPrevTrack, '上一首')
+    }
+
+    const handleVolumeUp = async () => {
+        await executeCommand(mediaVolumeUp, '音量+')
+    }
+
+    const handleVolumeDown = async () => {
+        await executeCommand(mediaVolumeDown, '音量-')
     }
 
     // ===================== 3D模型车辆数据同步 =====================
@@ -1097,6 +1174,198 @@
     .quick-action-sub {
         font-size: 18rpx;
         color: var(--dark-page-text-hint);
+    }
+
+    /* ========== 媒体播放器 ========== */
+    .media-player {
+        flex-shrink: 0;
+        margin: 0 32rpx 24rpx;
+    }
+
+    .media-player-inner {
+        display: flex;
+        flex-direction: column;
+        background: var(--dark-page-glass-bg);
+        border: 1rpx solid var(--dark-page-glass-border);
+        border-radius: 28rpx;
+        padding: 24rpx;
+        gap: 20rpx;
+    }
+
+    .media-top-row {
+        display: flex;
+        align-items: center;
+        gap: 20rpx;
+    }
+
+    .visionpro-theme .media-player-inner {
+        background: rgba(255, 255, 255, 0.58);
+        backdrop-filter: blur(40px);
+        -webkit-backdrop-filter: blur(40px);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+    }
+
+    .media-album-art {
+        width: 80rpx;
+        height: 80rpx;
+        border-radius: 20rpx;
+        background: linear-gradient(135deg, var(--dark-page-icon-wrap-bg), var(--dark-page-glass-bg));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: all 0.3s ease;
+
+        &.playing {
+            background: linear-gradient(135deg, #5BE7C4, #3cc9a5);
+            box-shadow: 0 4rpx 20rpx rgba(91, 231, 196, 0.35);
+        }
+    }
+
+    .visionpro-theme .media-album-art {
+        background: rgba(15, 23, 42, 0.06);
+
+        &.playing {
+            background: linear-gradient(135deg, #0F172A, #334155);
+            box-shadow: 0 4rpx 20rpx rgba(15, 23, 42, 0.2);
+        }
+    }
+
+    .media-track-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4rpx;
+    }
+
+    .media-track-title {
+        font-size: 28rpx;
+        font-weight: 600;
+        color: var(--dark-page-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .media-track-meta {
+        display: flex;
+        align-items: center;
+        gap: 10rpx;
+    }
+
+    .media-track-artist {
+        font-size: 22rpx;
+        color: var(--dark-page-text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .media-track-source {
+        font-size: 18rpx;
+        color: var(--color-primary);
+        padding: 2rpx 10rpx;
+        background: rgba(91, 231, 196, 0.12);
+        border-radius: 6rpx;
+        flex-shrink: 0;
+    }
+
+    .media-transport {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 24rpx;
+    }
+
+    .media-ctrl {
+        width: 64rpx;
+        height: 64rpx;
+        border-radius: 50%;
+        background: var(--dark-page-icon-wrap-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+
+        &:active {
+            opacity: 0.7;
+            transform: scale(0.92);
+        }
+
+        &.play {
+            width: 88rpx;
+            height: 88rpx;
+
+            .media-ctrl-icon {
+                font-size: 36rpx;
+            }
+
+            &.active {
+                background: linear-gradient(135deg, #5BE7C4, #3cc9a5);
+                box-shadow: 0 6rpx 24rpx rgba(91, 231, 196, 0.4);
+
+                .media-ctrl-icon {
+                    color: #fff;
+                }
+            }
+        }
+    }
+
+    .visionpro-theme .media-ctrl {
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+
+        &.play.active {
+            background: linear-gradient(135deg, #0F172A, #334155);
+            box-shadow: 0 6rpx 24rpx rgba(15, 23, 42, 0.25);
+        }
+    }
+
+    .media-ctrl-icon {
+        font-size: 26rpx;
+        color: var(--dark-page-text);
+        line-height: 1;
+    }
+
+    .media-volume-row {
+        display: flex;
+        align-items: center;
+        gap: 12rpx;
+    }
+
+    .media-vol-btn {
+        width: 48rpx;
+        height: 48rpx;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        &:active {
+            opacity: 0.7;
+        }
+    }
+
+    .media-vol-icon {
+        font-size: 22rpx;
+    }
+
+    .media-vol-track {
+        flex: 1;
+        height: 6rpx;
+        border-radius: 3rpx;
+        background: var(--dark-page-glass-border);
+        overflow: hidden;
+    }
+
+    .media-vol-fill {
+        height: 100%;
+        border-radius: 3rpx;
+        background: linear-gradient(90deg, var(--color-primary), #5BE7C4);
+        transition: width 0.3s ease;
     }
 
 /* ========== 电量续航条 ========== */

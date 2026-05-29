@@ -552,3 +552,87 @@ func GetCommands(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": commands})
 }
+
+func MediaTogglePlayback(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_toggle_playback", nil)
+	handleCommandResponse(c, req.VIN, "media_toggle_playback", resp, err)
+}
+
+func MediaNextTrack(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_next_track", nil)
+	handleCommandResponse(c, req.VIN, "media_next_track", resp, err)
+}
+
+func MediaPrevTrack(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_prev_track", nil)
+	handleCommandResponse(c, req.VIN, "media_prev_track", resp, err)
+}
+
+func MediaNextFav(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_next_fav", nil)
+	handleCommandResponse(c, req.VIN, "media_next_fav", resp, err)
+}
+
+func MediaPrevFav(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_prev_fav", nil)
+	handleCommandResponse(c, req.VIN, "media_prev_fav", resp, err)
+}
+
+func MediaVolumeUp(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_volume_up", nil)
+	handleCommandResponse(c, req.VIN, "media_volume_up", resp, err)
+}
+
+func MediaVolumeDown(c *gin.Context) {
+	var req CommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	resp, err := sendCommand(req.VIN, "media_volume_down", nil)
+	handleCommandResponse(c, req.VIN, "media_volume_down", resp, err)
+}
+
+func AdjustVolume(c *gin.Context) {
+	var req struct {
+		VIN    string `json:"vin" binding:"required"`
+		Volume int    `json:"volume" binding:"required,min=0,max=100"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	body := map[string]int{"volume": req.Volume}
+	resp, err := sendCommand(req.VIN, "adjust_volume", body)
+	handleCommandResponse(c, req.VIN, "adjust_volume", resp, err)
+}
