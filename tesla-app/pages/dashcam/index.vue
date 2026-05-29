@@ -178,7 +178,6 @@ const loading = ref(false)
 const loadingText = ref('加载中...')
 const scannedEvents = ref([])
 const showScanResult = ref(false)
-const scanDir = ref('')
 
 const TYPE_COLORS = {
   recent: '#60a5fa',
@@ -254,16 +253,15 @@ const loadEvents = () => {
 
 const handleScanUSB = async () => {
   loading.value = true
-  loadingText.value = '选择目录...'
+  loadingText.value = '选择TeslaCam目录...'
   try {
-    const dir = await selectTeslaCamDir()
-    if (!dir) {
+    const treeUri = await selectTeslaCamDir()
+    if (!treeUri) {
       loading.value = false
       return
     }
-    scanDir.value = dir
     loadingText.value = '扫描中...'
-    const result = await scanTeslaCam(dir)
+    const result = await scanTeslaCam(treeUri)
     scannedEvents.value = result.events || []
     if (scannedEvents.value.length > 0) {
       showScanResult.value = true
@@ -312,7 +310,7 @@ const startImport = async () => {
           camera: item.camera,
           file_path: fp,
           duration: 0,
-          file_size: 0
+          file_size: item.size || 0
         })
       }
       if (files.length > 0) {
