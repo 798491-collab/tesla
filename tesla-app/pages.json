@@ -197,6 +197,13 @@
       }
     },
     {
+      "path": "pages/dashcam/day",
+      "style": {
+        "navigationBarTitleText": "日期详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/dashcam/map",
       "style": {
         "navigationBarTitleText": "轨迹地图",

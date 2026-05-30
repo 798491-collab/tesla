@@ -114,11 +114,13 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import Icon from '@/components/Icon/Icon.vue'
 import { useThemeStore } from '@/store/theme'
 import { initDB, getEvents } from '@/utils/dashcam-db.js'
 import { batchFuseEvents } from '@/utils/dashcam-gps.js'
+import { waitForPlus } from '@/utils/dashcam-scanner.js'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
@@ -193,6 +195,8 @@ const formatDuration = (seconds) => {
 }
 
 const loadTimeline = async () => {
+  console.log('[Dashcam:timeline] loadTimeline start, clearing old data')
+  events.value = []
   loading.value = true
   try {
     const options = { limit: 200 }
@@ -201,11 +205,14 @@ const loadTimeline = async () => {
     }
     let list = await getEvents(options)
     list = list || []
+    console.log('[Dashcam:timeline] getEvents returned', list.length, 'events')
     try {
       list = await batchFuseEvents(list)
     } catch (e) {}
     events.value = list
+    console.log('[Dashcam:timeline] final list:', list.length, 'events')
   } catch (e) {
+    console.error('[Dashcam:timeline] loadTimeline error:', e)
     events.value = []
   } finally {
     loading.value = false
@@ -226,11 +233,50 @@ const goMap = (event) => {
   }
 }
 
-onMounted(async () => {
-  try {
-    await initDB()
-  } catch (e) {}
+let _tlInitDone = false
+let _tlInitPromise = null
+let _tlLastLoadTs = 0
+
+const tlEnsureInit = async () => {
+  if (_tlInitDone) return
+  if (!_tlInitPromise) {
+    _tlInitPromise = (async () => {
+      console.log('[Dashcam:timeline] waiting for plus ready...')
+      await waitForPlus()
+      console.log('[Dashcam:timeline] plus ready, initializing DB')
+      await initDB()
+      _tlInitDone = true
+      console.log('[Dashcam:timeline] DB init complete')
+    })()
+  }
+  return _tlInitPromise
+}
+
+const tlSafeReload = () => {
+  const now = Date.now()
+  if (now - _tlLastLoadTs < 1500) {
+    console.log('[Dashcam:timeline] skip reload, too frequent')
+    return
+  }
+  _tlLastLoadTs = now
   loadTimeline()
+}
+
+onMounted(async () => {
+  console.log('[Dashcam:timeline] onMounted')
+  try {
+    await tlEnsureInit()
+  } catch (e) {
+    console.error('[Dashcam:timeline] init error:', e)
+  }
+  tlSafeReload()
+})
+
+onShow(() => {
+  console.log('[Dashcam:timeline] onShow, reloading data')
+  tlEnsureInit().then(() => {
+    tlSafeReload()
+  })
 })
 </script>
 
