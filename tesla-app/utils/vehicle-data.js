@@ -119,6 +119,7 @@ function startWSStream(vin) {
   wsOn('online_state', onWSOnlineState)
   wsOn('poll_state', onWSPollState)
   wsOn('command_state', onWSCommandState)
+  wsOn('media_state', onWSMediaState)
   wsOn('open', onWSOpen)
   wsOn('close', onWSClose)
 
@@ -130,6 +131,7 @@ function stopWSStream() {
   wsOff('online_state', onWSOnlineState)
   wsOff('poll_state', onWSPollState)
   wsOff('command_state', onWSCommandState)
+  wsOff('media_state', onWSMediaState)
   wsOff('open', onWSOpen)
   wsOff('close', onWSClose)
   wsDisconnect()
@@ -221,6 +223,15 @@ function onWSCommandState(data) {
       }
     }, 3000)
   }
+}
+
+function onWSMediaState(data) {
+  if (data.media_playback_status !== undefined) vehicleStore.data.media_playback_status = data.media_playback_status
+  if (data.media_audio_source !== undefined) vehicleStore.data.media_audio_source = data.media_audio_source
+  if (data.media_volume !== undefined) vehicleStore.data.media_volume = data.media_volume
+  if (data.now_playing_title !== undefined) vehicleStore.data.now_playing_title = data.now_playing_title
+  if (data.now_playing_artist !== undefined) vehicleStore.data.now_playing_artist = data.now_playing_artist
+  if (data.now_playing_album !== undefined) vehicleStore.data.now_playing_album = data.now_playing_album
 }
 
 function onWSOpen() {

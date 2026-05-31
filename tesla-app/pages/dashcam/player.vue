@@ -108,9 +108,9 @@
           </view>
         </view>
 
-        <view class="center-play-btn" @click.stop="togglePlay">
-          <Icon :name="isPlaying ? 'Pause' : 'Play'" :size="28" color="#fff" />
-        </view>
+        <cover-view class="center-play-btn" @click.stop="togglePlay">
+          <cover-view class="center-play-icon">{{ isPlaying ? '❚❚' : '▶' }}</cover-view>
+        </cover-view>
       </view>
 
       <view class="event-info-card" v-if="eventData">
@@ -779,6 +779,13 @@ const formatEventTime = (ts) => {
     transform: translate(-50%, -50%) scale(0.92);
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(99, 102, 241, 0.95));
   }
+}
+
+.center-play-icon {
+  font-size: 36rpx;
+  color: #fff;
+  text-align: center;
+  line-height: 100rpx;
 }
 
 .progress-wrap {

@@ -12,6 +12,7 @@ import (
 	"tesla-server/internal/logger"
 	"tesla-server/internal/polling"
 	"tesla-server/internal/redis"
+	"tesla-server/internal/telemetry"
 	"tesla-server/internal/ws"
 	"tesla-server/models"
 	"tesla-server/routes"
@@ -54,6 +55,19 @@ func main() {
 
 	ws.InitHub()
 	log.Println("WebSocket hub started")
+
+	if cfg.Telemetry.Enabled {
+		var privKeyPEM []byte
+		if cfg.Telemetry.PrivateKey != "" {
+			privKeyPEM = []byte(cfg.Telemetry.PrivateKey)
+		}
+		if err := telemetry.InitTelemetryServer(cfg.Telemetry.ListenAddr, privKeyPEM); err != nil {
+			log.Fatalf("Failed to start telemetry server: %v", err)
+		}
+		log.Println("Fleet Telemetry server started on", cfg.Telemetry.ListenAddr)
+	} else {
+		log.Println("Fleet Telemetry server disabled (TELEMETRY_ENABLED not set)")
+	}
 
 	go func() {
 		for {

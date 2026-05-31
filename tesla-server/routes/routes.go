@@ -117,6 +117,8 @@ func Setup(r *gin.Engine) {
 			authorized.POST("/vcp/media_volume_up", vcp.MediaVolumeUp)
 			authorized.POST("/vcp/media_volume_down", vcp.MediaVolumeDown)
 			authorized.POST("/vcp/adjust_volume", vcp.AdjustVolume)
+
+			authorized.POST("/telemetry/config", handleTelemetryConfig)
 		}
 	}
 }
@@ -737,4 +739,49 @@ func getVehicleTracks(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": tracks})
+}
+
+func handleTelemetryConfig(c *gin.Context) {
+	var req struct {
+		VINs []string `json:"vins"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+
+	if len(req.VINs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "vins required"})
+		return
+	}
+
+	cfg := config.Load()
+	if !cfg.Telemetry.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "Fleet Telemetry server is not enabled. Set TELEMETRY_ENABLED=true"})
+		return
+	}
+
+	hostname := cfg.Telemetry.Hostname
+	if hostname == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "TELEMETRY_HOSTNAME not configured"})
+		return
+	}
+
+	vin := req.VINs[0]
+	accessToken, err := tesla.GetValidAccessToken(vin)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "Failed to get access token: " + err.Error()})
+		return
+	}
+
+	result, err := fleet.ConfigureFleetTelemetry(accessToken, req.VINs, hostname)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": result,
+	})
 }

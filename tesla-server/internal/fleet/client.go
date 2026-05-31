@@ -352,6 +352,13 @@ func getVehicleDataWithRetry(accessToken, vehicleTag string, retryCount int) (*V
 			return nil, fmt.Errorf("failed to parse vehicle data: %v", err)
 		}
 
+		if data.Response.MediaInfo.NowPlayingTitle != "" {
+			log.Printf("[Fleet API] media_info received: title=%q artist=%q source=%q",
+				data.Response.MediaInfo.NowPlayingTitle,
+				data.Response.MediaInfo.NowPlayingArtist,
+				data.Response.MediaInfo.AudioSource)
+		}
+
 		return &data, nil
 	}
 
@@ -865,4 +872,79 @@ func VerifyVirtualKey(accessToken string, vins []string) (*VirtualKeyStatus, err
 	}
 
 	return result, nil
+}
+
+type TelemetryConfigRequest struct {
+	VINs    []string                `json:"vins"`
+	Config  TelemetryConfigPayload  `json:"config"`
+}
+
+type TelemetryConfigPayload struct {
+	Hostname string                     `json:"hostname"`
+	Fields   map[string]TelemetryField  `json:"fields"`
+}
+
+type TelemetryField struct {
+	MinInterval int `json:"min_interval,omitempty"`
+	MaxInterval int `json:"max_interval,omitempty"`
+}
+
+type TelemetryConfigResponse struct {
+	Response struct {
+		SuccessfulVINs  []string `json:"successful_vins"`
+		SkippedVINs     []string `json:"skipped_vins,omitempty"`
+	} `json:"response"`
+	Error string `json:"error,omitempty"`
+}
+
+func ConfigureFleetTelemetry(accessToken string, vins []string, hostname string) (*TelemetryConfigResponse, error) {
+	cfg := config.Load()
+	url := fmt.Sprintf("%s/api/1/vehicles/fleet_telemetry_config", cfg.Tesla.FleetAPIURL)
+
+	mediaFields := map[string]TelemetryField{
+		"MediaPlaybackStatus": {MinInterval: 1, MaxInterval: 600},
+		"MediaAudioSource":    {MinInterval: 1, MaxInterval: 600},
+		"MediaVolume":         {MinInterval: 1, MaxInterval: 600},
+		"NowPlayingTitle":     {MinInterval: 1, MaxInterval: 600},
+		"NowPlayingArtist":    {MinInterval: 1, MaxInterval: 600},
+		"NowPlayingAlbum":     {MinInterval: 1, MaxInterval: 600},
+		"NowPlayingDuration":  {MinInterval: 1, MaxInterval: 600},
+		"NowPlayingElapsed":   {MinInterval: 1, MaxInterval: 600},
+	}
+
+	reqBody := TelemetryConfigRequest{
+		VINs: vins,
+		Config: TelemetryConfigPayload{
+			Hostname: hostname,
+			Fields:   mediaFields,
+		},
+	}
+
+	log.Printf("[Fleet API] Configuring Fleet Telemetry for %d vehicles, hostname=%s", len(vins), hostname)
+
+	resp, err := client.R().
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetHeader("Content-Type", "application/json").
+		SetBody(reqBody).
+		Post(url)
+
+	if err != nil {
+		return nil, fmt.Errorf("fleet telemetry config request failed: %w", err)
+	}
+
+	log.Printf("[Fleet API] fleet_telemetry_config status: %d", resp.StatusCode())
+
+	var result TelemetryConfigResponse
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse telemetry config response: %w", err)
+	}
+
+	if result.Error != "" {
+		return &result, fmt.Errorf("fleet telemetry config error: %s", result.Error)
+	}
+
+	log.Printf("[Fleet API] Telemetry config: successful=%v, skipped=%v",
+		result.Response.SuccessfulVINs, result.Response.SkippedVINs)
+
+	return &result, nil
 }

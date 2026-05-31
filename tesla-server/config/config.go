@@ -3,16 +3,25 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Tesla    TeslaConfig
-	JWT      JWTConfig
-	Map      MapConfig
-	AI       AIConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	Tesla     TeslaConfig
+	JWT       JWTConfig
+	Map       MapConfig
+	AI        AIConfig
+	Telemetry TelemetryConfig
+}
+
+type TelemetryConfig struct {
+	Enabled    bool
+	ListenAddr string
+	Hostname   string
+	PrivateKey string
 }
 
 type AIConfig struct {
@@ -120,6 +129,12 @@ func Load() *Config {
 			Model:   getEnv("AI_MODEL", "glm-4-flash"),
 			BaseURL: getEnv("AI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
 		},
+		Telemetry: TelemetryConfig{
+			Enabled:    getEnvAsBool("TELEMETRY_ENABLED", false),
+			ListenAddr: getEnv("TELEMETRY_LISTEN_ADDR", ":4443"),
+			Hostname:   getEnv("TELEMETRY_HOSTNAME", ""),
+			PrivateKey: getEnv("TELEMETRY_PRIVATE_KEY", ""),
+		},
 	}
 }
 
@@ -142,6 +157,13 @@ func getEnvAsInt(key string, defaultValue int) int {
 		if intVal, err := strconv.Atoi(value); err == nil {
 			return intVal
 		}
+	}
+	return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		return strings.ToLower(value) == "true" || value == "1"
 	}
 	return defaultValue
 }
