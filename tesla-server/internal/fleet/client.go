@@ -137,6 +137,39 @@ type DriveState struct {
 	LightsTurnSignal     string  `json:"lights_turn_signal"`
 }
 
+// FlexInt 可以同时解析 JSON 中的整数和字符串值
+// Tesla API 某些字段（如 climate_keeper_mode, defrost_mode）可能返回 int 或 string
+type FlexInt int
+
+func (f *FlexInt) UnmarshalJSON(data []byte) error {
+	var i int
+	if err := json.Unmarshal(data, &i); err == nil {
+		*f = FlexInt(i)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		switch s {
+		case "off", "":
+			*f = 0
+		case "on":
+			*f = 1
+		case "dog":
+			*f = 2
+		case "camp":
+			*f = 3
+		default:
+			if v, err := strconv.Atoi(s); err == nil {
+				*f = FlexInt(v)
+			} else {
+				*f = 0
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("FlexInt: cannot unmarshal %s", string(data))
+}
+
 // ClimateState 气候状态
 type ClimateState struct {
 	InsideTemp              float64 `json:"inside_temp"`
@@ -154,8 +187,8 @@ type ClimateState struct {
 	SeatHeaterRearRight     int     `json:"seat_heater_rear_right"`
 	SeatHeaterRearCenter    int     `json:"seat_heater_rear_center"`
 	SteeringWheelHeat       bool    `json:"steering_wheel_heat"`
-	DefrostMode             int     `json:"defrost_mode"`
-	ClimateKeeperMode       int     `json:"climate_keeper_mode"`
+	DefrostMode             FlexInt `json:"defrost_mode"`
+	ClimateKeeperMode       FlexInt `json:"climate_keeper_mode"`
 }
 
 // VehicleConfig 车辆配置
@@ -910,12 +943,12 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		SeatHeaterRearRight: data.Response.ClimateState.SeatHeaterRearRight,
 		SeatHeaterRearCenter: data.Response.ClimateState.SeatHeaterRearCenter,
 		SteeringWheelHeater: data.Response.ClimateState.SteeringWheelHeat,
-		DefrostMode:         data.Response.ClimateState.DefrostMode,
+		DefrostMode:         int(data.Response.ClimateState.DefrostMode),
 		HvacPower:           deriveHvacPower(data.Response.ClimateState),
 		HvacACEnabled:       data.Response.ClimateState.IsAirConditioningOn,
 		HvacAutoMode:        data.Response.ClimateState.AutoConditioningEnabled,
 		HvacFanSpeed:        data.Response.ClimateState.FanStatus,
-		ClimateKeeperMode:   data.Response.ClimateState.ClimateKeeperMode,
+		ClimateKeeperMode:   int(data.Response.ClimateState.ClimateKeeperMode),
 		Version:     data.Response.VehicleState.CarVersion,
 		TpmsFL: data.Response.VehicleState.TPMSPressureFL,
 		TpmsFR: data.Response.VehicleState.TPMSPressureFR,
