@@ -6,7 +6,7 @@ let reconnectTimer = null
 let heartbeatTimer = null
 let reconnectAttempts = 0
 const MAX_RECONNECT_ATTEMPTS = 10
-const RECONNECT_INTERVALS = [1000, 2000, 3000, 5000, 8000, 10000, 15000, 20000, 30000, 60000]
+const RECONNECT_INTERVALS = [500, 1000, 1500, 2000, 3000, 5000, 8000, 10000, 15000, 20000]
 let listeners = {}
 let currentVIN = ''
 let isConnected = false
@@ -68,6 +68,20 @@ export function wsConnect(vin) {
         emit('online_state', msg.data)
       } else if (msg.type === 'poll_state') {
         emit('poll_state', msg.data)
+      } else if (msg.type === 'realtime_update') {
+        emit('realtime_update', msg.data)
+      } else if (msg.type === 'state_update') {
+        emit('state_update', msg.data)
+      } else if (msg.type === 'command_state') {
+        emit('command_state', msg.data)
+      } else if (msg.type === 'media_state') {
+        emit('media_state', msg.data)
+      } else if (msg.type === 'trip_ended') {
+        emit('trip_ended', msg.data)
+      } else if (msg.type === 'charging_ended') {
+        emit('charging_ended', msg.data)
+      } else if (msg.type === 'analysis_complete') {
+        emit('analysis_complete', msg.data)
       }
     } catch (e) {
       console.warn('[WS] Parse message error:', e)
@@ -117,7 +131,7 @@ export function wsSwitchVIN(vin) {
   wsDisconnect()
   setTimeout(() => {
     wsConnect(vin)
-  }, 300)
+  }, 100)
 }
 
 function scheduleReconnect() {

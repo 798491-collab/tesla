@@ -125,7 +125,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { onShow, onHide } from '@dcloudio/uni-app'
 import Icon from '@/components/Icon/Icon.vue'
 import { useVehicleStore } from '@/store/vehicle'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
@@ -304,6 +305,23 @@ onUnmounted(() => {
 
   if (timeTimer) clearInterval(timeTimer)
   destroyVehicleData()
+})
+
+onShow(() => {
+  if (currentVehicle.value) {
+    initVehicleData(currentVehicle.value.vin)
+  }
+})
+
+onHide(() => {
+  destroyVehicleData()
+})
+
+watch(() => currentVehicle.value, (newVal) => {
+  destroyVehicleData()
+  if (newVal) {
+    initVehicleData(newVal.vin)
+  }
 })
 </script>
 

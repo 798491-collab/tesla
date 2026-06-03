@@ -262,36 +262,12 @@ export default {
     "viewBox": "0 0 512 512",
     "content": "<path d=\"M432 448a15.92 15.92 0 0 1-11.31-4.69l-352-352a16 16 0 0 1 22.62-22.62l352 352A16 16 0 0 1 432 448z\" fill=\"currentColor\"/><path d=\"M248 315.85l-51.79-51.79a2 2 0 0 0-3.39 1.69a64.11 64.11 0 0 0 53.49 53.49a2 2 0 0 0 1.69-3.39z\" fill=\"currentColor\"/><path d=\"M264 196.15L315.87 248a2 2 0 0 0 3.4-1.69a64.13 64.13 0 0 0-53.55-53.55a2 2 0 0 0-1.72 3.39z\" fill=\"currentColor\"/><path d=\"M491 273.36a32.2 32.2 0 0 0-.1-34.76c-26.46-40.92-60.79-75.68-99.27-100.53C349 110.55 302 96 255.68 96a226.54 226.54 0 0 0-71.82 11.79a4 4 0 0 0-1.56 6.63l47.24 47.24a4 4 0 0 0 3.82 1.05a96 96 0 0 1 116 116a4 4 0 0 0 1.05 3.81l67.95 68a4 4 0 0 0 5.4.24a343.81 343.81 0 0 0 67.24-77.4z\" fill=\"currentColor\"/><path d=\"M256 352a96 96 0 0 1-93.3-118.63a4 4 0 0 0-1.05-3.81l-66.84-66.87a4 4 0 0 0-5.41-.23c-24.39 20.81-47 46.13-67.67 75.72a31.92 31.92 0 0 0-.64 35.54c26.41 41.33 60.39 76.14 98.28 100.65C162.06 402 207.92 416 255.68 416a238.22 238.22 0 0 0 72.64-11.55a4 4 0 0 0 1.61-6.64l-47.47-47.46a4 4 0 0 0-3.81-1.05A96 96 0 0 1 256 352z\" fill=\"currentColor\"/>"
   },
-  "Sparkles": {
+  "Radio": {
     "viewBox": "0 0 512 512",
-    "content": "<path d=\"M208 464h-16v-16a16 16 0 0 0-32 0v16h-16a16 16 0 0 0 0 32h16v16a16 16 0 0 0 32 0v-16h16a16 16 0 0 0 0-32zm168-48h-16v-16a16 16 0 0 0-32 0v16h-16a16 16 0 0 0 0 32h16v16a16 16 0 0 0 32 0v-16h16a16 16 0 0 0 0-32zM464 160h-16v-16a16 16 0 0 0-32 0v16h-16a16 16 0 0 0 0 32h16v16a16 16 0 0 0 32 0v-16h16a16 16 0 0 0 0-32zM259.2 157.6l-22.4-33.6a8 8 0 0 0-13.5 0L201 157.6a8 8 0 0 1-5.4 3.5l-39.5 5.7a8 8 0 0 0-4.4 13.6l28.6 27.9a8 8 0 0 1 2.3 7.1l-6.8 39.4a8 8 0 0 0 11.6 8.4l35.4-18.6a8 8 0 0 1 7.4 0l35.4 18.6a8 8 0 0 0 11.6-8.4l-6.8-39.4a8 8 0 0 1 2.3-7.1l28.6-27.9a8 8 0 0 0-4.4-13.6l-39.5-5.7a8 8 0 0 1-5.4-3.5z\" fill=\"currentColor\"/>"
+    "content": "<circle cx=\"256\" cy=\"256\" r=\"36\" fill=\"currentColor\"/><path d=\"M190.24 341.77a22 22 0 0 1-16.46-7.38a118 118 0 0 1 0-156.76a22 22 0 1 1 32.87 29.24a74 74 0 0 0 0 98.29a22 22 0 0 1-16.43 36.61z\" fill=\"currentColor\"/><path d=\"M321.76 341.77a22 22 0 0 1-16.43-36.61a74 74 0 0 0 0-98.29a22 22 0 1 1 32.87-29.24a118 118 0 0 1 0 156.76a22 22 0 0 1-16.44 7.38z\" fill=\"currentColor\"/><path d=\"M139.29 392.72a21.92 21.92 0 0 1-16.08-7a190 190 0 0 1 0-259.49a22 22 0 1 1 32.13 30.06a146 146 0 0 0 0 199.38a22 22 0 0 1-16.06 37z\" fill=\"currentColor\"/><path d=\"M372.71 392.72a22 22 0 0 1-16.06-37a146 146 0 0 0 0-199.38a22 22 0 1 1 32.13-30.06a190 190 0 0 1 0 259.49a21.92 21.92 0 0 1-16.07 6.95z\" fill=\"currentColor\"/><path d=\"M429 438a22 22 0 0 1-16.39-36.67a218.34 218.34 0 0 0 0-290.66a22 22 0 0 1 32.78-29.34a262.34 262.34 0 0 1 0 349.34A22 22 0 0 1 429 438z\" fill=\"currentColor\"/><path d=\"M83 438a21.94 21.94 0 0 1-16.41-7.33a262.34 262.34 0 0 1 0-349.34a22 22 0 0 1 32.78 29.34a218.34 218.34 0 0 0 0 290.66A22 22 0 0 1 83 438z\" fill=\"currentColor\"/>"
   },
-  "Battery": {
+  "MusicNote": {
     "viewBox": "0 0 512 512",
-    "content": "<rect x=\"32\" y=\"144\" width=\"400\" height=\"224\" rx=\"45.7\" ry=\"45.7\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"square\" stroke-miterlimit=\"10\" stroke-width=\"32\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-miterlimit=\"10\" stroke-width=\"32\" d=\"M480 218.67v74.66\"/>"
-  },
-  "Plug": {
-    "viewBox": "0 0 512 512",
-    "content": "<path d=\"M384 128v128a128 128 0 0 1-256 0V128\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\" d=\"M256 256v224\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\" d=\"M192 32v64\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\" d=\"M320 32v64\"/>"
-  },
-  "Seat": {
-    "viewBox": "0 0 512 512",
-    "content": "<path d=\"M112 448h288a16 16 0 0 0 16-16v-32a16 16 0 0 0-16-16H112a16 16 0 0 0-16 16v32a16 16 0 0 0 16 16z\" fill=\"currentColor\"/><path d=\"M384 160c0-70.69-57.31-128-128-128S128 89.31 128 160v128a32 32 0 0 0 32 32h192a32 32 0 0 0 32-32V160z\" fill=\"currentColor\"/><path d=\"M80 272a32 32 0 0 0-32 32v64a32 32 0 0 0 32 32h16V272H80z\" fill=\"currentColor\"/><path d=\"M416 272h16a32 32 0 0 1 32 32v64a32 32 0 0 1-32 32h-16V272z\" fill=\"currentColor\"/>"
-  },
-  "Steering": {
-    "viewBox": "0 0 512 512",
-    "content": "<circle cx=\"256\" cy=\"256\" r=\"224\" fill=\"none\" stroke=\"currentColor\" stroke-miterlimit=\"10\" stroke-width=\"32\"/><circle cx=\"256\" cy=\"256\" r=\"80\" fill=\"none\" stroke=\"currentColor\" stroke-miterlimit=\"10\" stroke-width=\"32\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-miterlimit=\"10\" stroke-width=\"32\" d=\"M176 384l24-104\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-miterlimit=\"10\" stroke-width=\"32\" d=\"M336 384l-24-104\"/><path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-miterlimit=\"10\" stroke-width=\"32\" d=\"M256 176v80\"/>"
-  },
-  "CheckmarkCircle": {
-    "viewBox": "0 0 512 512",
-    "content": "<path d=\"M256 48C141.31 48 48 141.31 48 256s93.31 208 208 208s208-93.31 208-208S370.69 48 256 48zm108.25 138.29l-134.4 160a16 16 0 0 1-12 5.71h-.27a16 16 0 0 1-11.89-5.3l-57.6-64a16 16 0 1 1 23.78-21.4l45.29 50.31 122.59-145.91a16 16 0 0 1 24.5 20.59z\" fill=\"currentColor\"/>"
-  },
-  "Play": {
-    "viewBox": "0 0 512 512",
-    "content": "<path d=\"M133 440a35.37 35.37 0 0 1-17.5-4.67c-12-6.94-19.46-20-19.46-34.33V110.67c0-14.37 7.46-27.4 19.46-34.34c12.15-7 26.87-6.85 38.77.65l259.47 145.34c11.56 6.47 18.76 18.49 18.76 31.68s-7.2 25.21-18.76 31.67L154.27 434.68A38.54 38.54 0 0 1 133 440z\" fill=\"currentColor\"/>"
-  },
-  "Pause": {
-    "viewBox": "0 0 512 512",
-    "content": "<rect x=\"176\" y=\"96\" width=\"16\" height=\"320\" rx=\"8\" fill=\"currentColor\"/><rect x=\"320\" y=\"96\" width=\"16\" height=\"320\" rx=\"8\" fill=\"currentColor\"/>"
+    "content": "<path d=\"M183.83 480a55.2 55.2 0 0 1-32.36-10.55A56.64 56.64 0 0 1 128 423.58a50.26 50.26 0 0 1 34.14-47.73L213 358.73a16.25 16.25 0 0 0 11-15.49V92a32.1 32.1 0 0 1 24.09-31.15l108.39-28.14A22 22 0 0 1 384 54v57.75a32.09 32.09 0 0 1-24.2 31.19l-91.65 23.13A16.24 16.24 0 0 0 256 181.91V424a48.22 48.22 0 0 1-32.78 45.81l-21.47 7.23a56 56 0 0 1-17.92 2.96z\" fill=\"currentColor\"/>"
   }
 }

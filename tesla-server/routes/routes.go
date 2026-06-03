@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"tesla-server/config"
@@ -31,6 +32,22 @@ import (
 
 func Setup(r *gin.Engine) {
 	r.Use(middleware.CORS())
+
+	r.GET("/.well-known/appspecific/com.tesla.3p.public-key.pem", func(c *gin.Context) {
+		cfg := config.Load()
+		publicKeyFile := cfg.Telemetry.PublicKeyFile
+		if publicKeyFile == "" {
+			c.String(http.StatusNotFound, "public key not configured")
+			return
+		}
+		data, err := os.ReadFile(publicKeyFile)
+		if err != nil {
+			log.Printf("[Routes] Failed to read public key file: %v", err)
+			c.String(http.StatusInternalServerError, "failed to read public key")
+			return
+		}
+		c.Data(http.StatusOK, "application/x-pem-file", data)
+	})
 
 	api := r.Group("/api")
 	{
@@ -774,7 +791,7 @@ func handleTelemetryConfig(c *gin.Context) {
 		return
 	}
 
-	result, err := fleet.ConfigureFleetTelemetry(accessToken, req.VINs, hostname)
+	result, err := fleet.ConfigureFleetTelemetry(accessToken, req.VINs, hostname, cfg.Telemetry.TLSCertFile)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return

@@ -312,6 +312,12 @@ func (w *VehicleWorker) pollFullData() {
 
 	ws.BroadcastVehicleState(w.VIN, data)
 
+	realtime := fleet.ExtractRealtimeFromSimple(data)
+	stateData := fleet.ExtractStateFromSimple(data)
+
+	ws.BroadcastRealtimeUpdate(w.VIN, realtime)
+	ws.BroadcastStateUpdate(w.VIN, stateData)
+
 	w.updateActivityFromData(data)
 
 	trip.ProcessDrivingState(w.VIN, data)
@@ -381,6 +387,12 @@ func (w *VehicleWorker) pollWakingConfirm() {
 	redis.SetVehicleOnline(w.VIN, data.Online)
 	redis.SetVehicleCharging(w.VIN, data.ChargingState == "Charging")
 	ws.BroadcastVehicleState(w.VIN, data)
+
+	realtime := fleet.ExtractRealtimeFromSimple(data)
+	stateData := fleet.ExtractStateFromSimple(data)
+	ws.BroadcastRealtimeUpdate(w.VIN, realtime)
+	ws.BroadcastStateUpdate(w.VIN, stateData)
+
 	trip.ProcessDrivingState(w.VIN, data)
 	charging.ProcessChargingState(w.VIN, data)
 	saveVehicleState(w.VIN, data)

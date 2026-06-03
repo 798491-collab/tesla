@@ -70,21 +70,32 @@ func DeleteVehicleState(vin string) error {
 
 func UpdateVehicleStateFields(vin string, fields map[string]interface{}) error {
 	key := fmt.Sprintf("tesla:vehicle:%s:state", vin)
-	exists, err := Exists(key)
+
+	// Get existing state or create new
+	var state map[string]interface{}
+	val, err := Client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		// Key doesn't exist, create new
+		state = make(map[string]interface{})
+	} else if err != nil {
+		return err
+	} else {
+		if err := json.Unmarshal([]byte(val), &state); err != nil {
+			return err
+		}
+	}
+
+	// Apply updates
+	for k, v := range fields {
+		state[k] = v
+	}
+
+	// Save back
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return nil
-	}
-	var current map[string]interface{}
-	if err := Get(key, &current); err != nil {
-		return err
-	}
-	for k, v := range fields {
-		current[k] = v
-	}
-	return Set(key, current, 0)
+	return Client.Set(ctx, key, data, 30*time.Minute).Err()
 }
 
 func SetVehicleOnline(vin string, online bool) error {
@@ -190,6 +201,40 @@ func GetPollingState(vin string, dest interface{}) error {
 }
 
 // DeletePollingState 删除轮询状态
+func SetVehicleRealtime(vin string, data interface{}) error {
+	key := fmt.Sprintf("tesla:vehicle:%s:realtime", vin)
+	return Set(key, data, 30*time.Second)
+}
+
+func GetVehicleRealtime(vin string, dest interface{}) error {
+	key := fmt.Sprintf("tesla:vehicle:%s:realtime", vin)
+	return Get(key, dest)
+}
+
+func DeleteVehicleRealtime(vin string) error {
+	key := fmt.Sprintf("tesla:vehicle:%s:realtime", vin)
+	return Delete(key)
+}
+
+type VehicleStatus struct {
+	Online bool   `json:"online"`
+	Source string `json:"source"`
+}
+
+func SetVehicleStatus(vin string, status *VehicleStatus) error {
+	key := fmt.Sprintf("tesla:vehicle:%s:status", vin)
+	return Set(key, status, 5*time.Minute)
+}
+
+func GetVehicleStatus(vin string) (*VehicleStatus, error) {
+	key := fmt.Sprintf("tesla:vehicle:%s:status", vin)
+	var status VehicleStatus
+	if err := Get(key, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
 func DeletePollingState(vin string) error {
 	key := fmt.Sprintf("tesla:polling:%s", vin)
 	return Delete(key)

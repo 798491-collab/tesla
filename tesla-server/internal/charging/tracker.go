@@ -8,6 +8,7 @@ import (
 	"tesla-server/internal/fleet"
 	"tesla-server/internal/geo"
 	"tesla-server/internal/redis"
+	"tesla-server/internal/ws"
 	"tesla-server/models"
 	"time"
 )
@@ -122,6 +123,12 @@ func endCharging(vin string, data *fleet.SimpleVehicleData) {
 		if err := database.DB.Where("vin = ? AND bind_status = 1", vin).First(&v).Error; err == nil {
 			refID := fmt.Sprintf("charging:%d", charge.ID)
 			go ai.RunChargingAnalysis(vin, v.UserID, refID)
+			// 通知前端充电已结束并开始AI分析
+			ws.DefaultHub.BroadcastToVIN(vin, "charging_ended", map[string]interface{}{
+				"charge_id": charge.ID,
+				"ref_id":    refID,
+				"status":    "analyzing",
+			})
 			log.Printf("[ChargingEngine] Auto AI analysis triggered for charge %d", charge.ID)
 		}
 	}()

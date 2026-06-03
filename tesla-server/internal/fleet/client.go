@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,6 +88,9 @@ type VehicleState struct {
 	CarVersion         string  `json:"car_version"`
 	CenterDisplayState int     `json:"center_display_state"`
 	MirrorFolded       bool    `json:"mirror_folded"`
+	LightsHazardsActive bool   `json:"lights_hazards_active"`
+	GuestModeEnabled   bool    `json:"guest_mode_enabled"`
+	ServiceMode        bool    `json:"service_mode"`
 	TPMSPressureFL float64 `json:"tpms_pressure_fl"`
 	TPMSPressureFR float64 `json:"tpms_pressure_fr"`
 	TPMSPressureRL float64 `json:"tpms_pressure_rl"`
@@ -108,28 +113,57 @@ type ChargeState struct {
 	ChargerCurrent      int     `json:"charger_current"`
 	ChargerPower        int     `json:"charger_power"`
 	FastChargerPresent  bool    `json:"fast_charger_present"`
+	FastChargerType     string  `json:"fast_charger_type"`
 	ChargeLimitSoc      int     `json:"charge_limit_soc"`
+	BatteryHeaterOn     bool    `json:"battery_heater_on"`
 	OutsideTemp         float64 `json:"outside_temp"`
 }
 
 // DriveState 驾驶状态
 type DriveState struct {
-	ShiftState string  `json:"shift_state"`
-	Speed      int     `json:"speed"`
-	Power      int     `json:"power"`
-	Heading    int     `json:"heading"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
+	ShiftState        string  `json:"shift_state"`
+	Speed             int     `json:"speed"`
+	Power             int     `json:"power"`
+	Heading           int     `json:"heading"`
+	Latitude          float64 `json:"latitude"`
+	Longitude         float64 `json:"longitude"`
+	BrakePedal        bool    `json:"brake_pedal"`
+	DriveRail         bool    `json:"drive_rail"`
+	AcceleratorPedalPos float64 `json:"accelerator_pedal_pos"`
+	ActiveRouteLatitude  float64 `json:"active_route_latitude"`
+	ActiveRouteLongitude float64 `json:"active_route_longitude"`
+	ActiveRouteName      string  `json:"active_route_name"`
+	LightsHighBeams      bool    `json:"lights_high_beams"`
+	LightsTurnSignal     string  `json:"lights_turn_signal"`
 }
 
 // ClimateState 气候状态
 type ClimateState struct {
-	InsideTemp           float64 `json:"inside_temp"`
-	OutsideTemp          float64 `json:"outside_temp"`
-	DriverTempSetting    float64 `json:"driver_temp_setting"`
-	PassengerTempSetting float64 `json:"passenger_temp_setting"`
-	IsClimateOn          bool    `json:"is_climate_on"`
-	BatteryTemp          float64 `json:"battery_temp"`
+	InsideTemp              float64 `json:"inside_temp"`
+	OutsideTemp             float64 `json:"outside_temp"`
+	DriverTempSetting       float64 `json:"driver_temp_setting"`
+	PassengerTempSetting    float64 `json:"passenger_temp_setting"`
+	IsClimateOn             bool    `json:"is_climate_on"`
+	IsAirConditioningOn     bool    `json:"is_air_conditioning_on"`
+	AutoConditioningEnabled bool    `json:"auto_conditioning_enabled"`
+	FanStatus               int     `json:"fan_status"`
+	BatteryTemp             float64 `json:"battery_temp"`
+	SeatHeaterLeft          int     `json:"seat_heater_left"`
+	SeatHeaterRight         int     `json:"seat_heater_right"`
+	SeatHeaterRearLeft      int     `json:"seat_heater_rear_left"`
+	SeatHeaterRearRight     int     `json:"seat_heater_rear_right"`
+	SeatHeaterRearCenter    int     `json:"seat_heater_rear_center"`
+	SteeringWheelHeat       bool    `json:"steering_wheel_heat"`
+	DefrostMode             int     `json:"defrost_mode"`
+	ClimateKeeperMode       int     `json:"climate_keeper_mode"`
+}
+
+// VehicleConfig 车辆配置
+type VehicleConfig struct {
+	CarType       string `json:"car_type"`
+	Trim          string `json:"trim"`
+	ExteriorColor string `json:"exterior_color"`
+	WheelType     string `json:"wheel_type"`
 }
 
 // VehicleDataResponse 完整车辆数据响应
@@ -141,6 +175,7 @@ type VehicleDataResponse struct {
 	GUISettings  GUISettings   `json:"gui_settings"`
 	MediaState   MediaState    `json:"media_state"`
 	MediaInfo    MediaInfo     `json:"media_info"`
+	VehicleConfig VehicleConfig `json:"vehicle_config"`
 	// 注意：closures_state 在中国区很多账号不支持，已移除
 }
 
@@ -162,6 +197,7 @@ type MediaInfo struct {
 	NowPlayingAlbum  string `json:"now_playing_album"`
 	NowPlayingDuration int  `json:"now_playing_duration"`
 	NowPlayingElapsed  int  `json:"now_playing_elapsed"`
+	NowPlayingStation  string `json:"now_playing_station"`
 }
 
 // VehicleData 完整车辆数据
@@ -171,6 +207,225 @@ type MediaInfo struct {
 type VehicleData struct {
 	Response VehicleDataResponse `json:"response"`
 	State    string              `json:"state"` // online/asleep/offline，可能为空
+}
+
+type RealtimeData struct {
+	Speed                    float64 `json:"speed"`
+	Gear                     string  `json:"gear"`
+	Power                    float64 `json:"power"`
+	PedalPosition            float64 `json:"pedal_position"`
+	CruiseSetSpeed           float64 `json:"cruise_set_speed"`
+	LateralAcceleration      float64 `json:"lateral_acceleration"`
+	LongitudinalAcceleration float64 `json:"longitudinal_acceleration"`
+	Latitude                 float64 `json:"latitude"`
+	Longitude                float64 `json:"longitude"`
+	Heading                  int     `json:"heading"`
+	GpsState                 int     `json:"gps_state"`
+	Soc                      float64 `json:"soc"`
+	BatteryLevel             float64 `json:"battery_level"`
+	DCChargingPower          float64 `json:"dc_charging_power"`
+	ACChargingPower          float64 `json:"ac_charging_power"`
+	PackVoltage              float64 `json:"pack_voltage"`
+	PackCurrent              float64 `json:"pack_current"`
+	EnergyRemaining          float64 `json:"energy_remaining"`
+	ChargeAmps               float64 `json:"charge_amps"`
+	ChargerVoltage           float64 `json:"charger_voltage"`
+	ChargeState              string  `json:"charge_state"`
+	FastChargerPresent       bool    `json:"fast_charger_present"`
+	UpdatedAt                int64   `json:"updated_at"`
+}
+
+type VehicleStateData struct {
+	Locked             bool    `json:"locked"`
+	DoorOpen           bool    `json:"door_open"`
+	DoorFL             bool    `json:"door_fl"`
+	DoorFR             bool    `json:"door_fr"`
+	DoorRL             bool    `json:"door_rl"`
+	DoorRR             bool    `json:"door_rr"`
+	TrunkOpen          bool    `json:"trunk_open"`
+	FrunkOpen          bool    `json:"frunk_open"`
+	WindowsOpen        bool    `json:"windows_open"`
+	SentryMode         bool    `json:"sentry_mode"`
+	ValetModeEnabled   bool    `json:"valet_mode_enabled"`
+	ServiceMode        bool    `json:"service_mode"`
+	InsideTemp         float64 `json:"inside_temp"`
+	OutsideTemp        float64 `json:"outside_temp"`
+	DriverTempSetting  float64 `json:"driver_temp_setting"`
+	PassengerTempSetting float64 `json:"passenger_temp_setting"`
+	IsACOn             bool    `json:"is_ac_on"`
+	IsClimateOn        bool    `json:"is_climate_on"`
+	SeatHeaterLeft     int     `json:"seat_heater_left"`
+	SeatHeaterRight    int     `json:"seat_heater_right"`
+	SeatHeaterRearLeft int     `json:"seat_heater_rear_left"`
+	SeatHeaterRearRight int    `json:"seat_heater_rear_right"`
+	SeatHeaterRearCenter int   `json:"seat_heater_rear_center"`
+	SteeringWheelHeater bool   `json:"steering_wheel_heater"`
+	DefrostMode        int     `json:"defrost_mode"`
+	HvacPower          float64 `json:"hvac_power"`
+	HvacACEnabled      bool    `json:"hvac_ac_enabled"`
+	HvacAutoMode       bool    `json:"hvac_auto_mode"`
+	HvacFanSpeed       int     `json:"hvac_fan_speed"`
+	ClimateKeeperMode  int     `json:"climate_keeper_mode"`
+	ChargePortDoorOpen bool    `json:"charge_port_door_open"`
+	ChargeLimitSoc     int     `json:"charge_limit_soc"`
+	MinutesToFull      int     `json:"minutes_to_full"`
+	ChargingState      string  `json:"charging_state"`
+	ChargeSpeed        float64 `json:"charge_speed"`
+	Voltage            int     `json:"voltage"`
+	Ampere             float64 `json:"ampere"`
+	ChargePower        float64 `json:"charge_power"`
+	AddedEnergy        float64 `json:"added_energy"`
+	ChargeEnergyAdded  float64 `json:"charge_energy_added"`
+	FastChargerType    string  `json:"fast_charger_type"`
+	BatteryHeaterOn    bool    `json:"battery_heater_on"`
+	TpmsFL             float64 `json:"tpms_fl"`
+	TpmsFR             float64 `json:"tpms_fr"`
+	TpmsRL             float64 `json:"tpms_rl"`
+	TpmsRR             float64 `json:"tpms_rr"`
+	CarType            string  `json:"car_type"`
+	Trim               string  `json:"trim"`
+	ExteriorColor      string  `json:"exterior_color"`
+	WheelType          string  `json:"wheel_type"`
+	Version            string  `json:"version"`
+	OdometerKm         float64 `json:"odometer_km"`
+	RangeKm            float64 `json:"range_km"`
+	DriverSeatBelt     int     `json:"driver_seat_belt"`
+	DriverSeatOccupied bool    `json:"driver_seat_occupied"`
+	CenterDisplayState int     `json:"center_display_state"`
+	MirrorFolded       bool    `json:"mirror_folded"`
+	LightsHighBeams    bool    `json:"lights_high_beams"`
+	LightsHazardsActive bool   `json:"lights_hazards_active"`
+	LightsTurnSignal   string  `json:"lights_turn_signal"`
+	BrakePedal         bool    `json:"brake_pedal"`
+	DriveRail          bool    `json:"drive_rail"`
+	PedalPosition      float64 `json:"pedal_position"`
+	GuestModeEnabled   bool    `json:"guest_mode_enabled"`
+	DestinationLatitude  float64 `json:"destination_latitude"`
+	DestinationLongitude float64 `json:"destination_longitude"`
+	DestinationName      string  `json:"destination_name"`
+	BatteryTemp        float64 `json:"battery_temp"`
+	UpdatedAt          int64   `json:"updated_at"`
+}
+
+type MediaStateData struct {
+	PlaybackStatus    string `json:"media_playback_status"`
+	AudioSource       string `json:"media_audio_source"`
+	Volume            int    `json:"media_volume"`
+	NowPlayingTitle   string `json:"now_playing_title"`
+	NowPlayingArtist  string `json:"now_playing_artist"`
+	NowPlayingAlbum   string `json:"now_playing_album"`
+	NowPlayingDuration int    `json:"now_playing_duration"`
+	NowPlayingElapsed  int    `json:"now_playing_elapsed"`
+	NowPlayingStation  string `json:"now_playing_station"`
+	UpdatedAt         int64  `json:"updated_at"`
+}
+
+func ExtractRealtimeFromSimple(data *SimpleVehicleData) *RealtimeData {
+	return &RealtimeData{
+		Speed:              data.Speed,
+		Gear:               data.Gear,
+		Power:              data.Power,
+		PedalPosition:      data.PedalPosition,
+		Heading:            data.Heading,
+		Latitude:           data.Latitude,
+		Longitude:          data.Longitude,
+		Soc:                float64(data.Soc),
+		BatteryLevel:       float64(data.Soc),
+		DCChargingPower:    data.ChargePower,
+		ACChargingPower:    0,
+		PackVoltage:        float64(data.Voltage),
+		PackCurrent:        data.Ampere,
+		EnergyRemaining:    0,
+		ChargeAmps:         data.Ampere,
+		ChargerVoltage:     float64(data.Voltage),
+		ChargeState:        data.ChargingState,
+		FastChargerPresent: data.Supercharging,
+		UpdatedAt:          time.Now().UnixMilli(),
+	}
+}
+
+func ExtractStateFromSimple(data *SimpleVehicleData) *VehicleStateData {
+	return &VehicleStateData{
+		Locked:             data.Locked,
+		DoorOpen:           data.DoorOpen,
+		DoorFL:             data.DoorFL,
+		DoorFR:             data.DoorFR,
+		DoorRL:             data.DoorRL,
+		DoorRR:             data.DoorRR,
+		TrunkOpen:          data.TrunkOpen,
+		FrunkOpen:          data.FrunkOpen,
+		WindowsOpen:        data.WindowsOpen,
+		SentryMode:         data.SentryMode,
+		ServiceMode:        data.ServiceMode,
+		InsideTemp:         data.InsideTemp,
+		OutsideTemp:        data.OutsideTemp,
+		DriverTempSetting:  data.DriverTempSetting,
+		PassengerTempSetting: data.PassengerTempSetting,
+		IsACOn:             data.IsACOn,
+		IsClimateOn:        data.IsClimateOn,
+		SeatHeaterLeft:     data.SeatHeaterLeft,
+		SeatHeaterRight:    data.SeatHeaterRight,
+		SeatHeaterRearLeft: data.SeatHeaterRearLeft,
+		SeatHeaterRearRight: data.SeatHeaterRearRight,
+		SeatHeaterRearCenter: data.SeatHeaterRearCenter,
+		SteeringWheelHeater: data.SteeringWheelHeater,
+		DefrostMode:        data.DefrostMode,
+		HvacPower:          data.HvacPower,
+		HvacACEnabled:      data.HvacACEnabled,
+		HvacAutoMode:       data.HvacAutoMode,
+		HvacFanSpeed:       data.HvacFanSpeed,
+		ClimateKeeperMode:  data.ClimateKeeperMode,
+		ChargePortDoorOpen: data.ChargePortOpen,
+		ChargeLimitSoc:     data.ChargeLimitSoc,
+		MinutesToFull:      data.MinutesToFull,
+		ChargingState:      data.ChargingState,
+		ChargeSpeed:        data.ChargeSpeed,
+		Voltage:            data.Voltage,
+		Ampere:             data.Ampere,
+		ChargePower:        data.ChargePower,
+		AddedEnergy:        data.AddedEnergy,
+		ChargeEnergyAdded:  data.ChargeEnergyAdded,
+		FastChargerType:    data.FastChargerType,
+		BatteryHeaterOn:    data.BatteryHeaterOn,
+		TpmsFL:             data.TpmsFL,
+		TpmsFR:             data.TpmsFR,
+		TpmsRL:             data.TpmsRL,
+		TpmsRR:             data.TpmsRR,
+		CarType:            data.CarType,
+		ExteriorColor:      data.ExteriorColor,
+		Version:            data.Version,
+		OdometerKm:         data.OdometerKm,
+		RangeKm:            data.RangeKm,
+		CenterDisplayState: data.CenterDisplayState,
+		MirrorFolded:       data.MirrorFolded,
+		LightsHighBeams:    data.LightsHighBeams,
+		LightsHazardsActive: data.LightsHazardsActive,
+		LightsTurnSignal:   data.LightsTurnSignal,
+		BrakePedal:         data.BrakePedal,
+		DriveRail:          data.DriveRail,
+		PedalPosition:      data.PedalPosition,
+		GuestModeEnabled:   data.GuestModeEnabled,
+		DestinationLatitude:  data.DestinationLatitude,
+		DestinationLongitude: data.DestinationLongitude,
+		DestinationName:      data.DestinationName,
+		BatteryTemp:        data.BatteryTemp,
+		UpdatedAt:          time.Now().UnixMilli(),
+	}
+}
+
+func ExtractMediaFromSimple(data *SimpleVehicleData) *MediaStateData {
+	return &MediaStateData{
+		PlaybackStatus:     data.MediaPlaybackStatus,
+		AudioSource:        data.MediaAudioSource,
+		Volume:             data.MediaVolume,
+		NowPlayingTitle:    data.NowPlayingTitle,
+		NowPlayingArtist:   data.NowPlayingArtist,
+		NowPlayingAlbum:    data.NowPlayingAlbum,
+		NowPlayingDuration: data.NowPlayingDuration,
+		NowPlayingElapsed:  data.NowPlayingElapsed,
+		NowPlayingStation:  data.NowPlayingStation,
+		UpdatedAt:          time.Now().UnixMilli(),
+	}
 }
 
 // SimpleVehicleData 简化车辆数据结构，用于前端展示
@@ -239,8 +494,39 @@ type SimpleVehicleData struct {
 	NowPlayingTitle     string `json:"now_playing_title"`
 	NowPlayingArtist    string `json:"now_playing_artist"`
 	NowPlayingAlbum     string `json:"now_playing_album"`
+	NowPlayingStation   string `json:"now_playing_station"`
+	NowPlayingDuration  int    `json:"now_playing_duration"`
+	NowPlayingElapsed   int    `json:"now_playing_elapsed"`
 	CenterDisplayState  int    `json:"center_display_state"`
 	StateOutput    *state.VehicleStateOutput `json:"state_output,omitempty"`
+	SeatHeaterLeft      int     `json:"seat_heater_left"`
+	SeatHeaterRight     int     `json:"seat_heater_right"`
+	SeatHeaterRearLeft  int     `json:"seat_heater_rear_left"`
+	SeatHeaterRearRight int     `json:"seat_heater_rear_right"`
+	SeatHeaterRearCenter int    `json:"seat_heater_rear_center"`
+	SteeringWheelHeater bool    `json:"steering_wheel_heater"`
+	DefrostMode         int     `json:"defrost_mode"`
+	HvacPower           float64 `json:"hvac_power"`
+	HvacACEnabled       bool    `json:"hvac_ac_enabled"`
+	HvacAutoMode        bool    `json:"hvac_auto_mode"`
+	HvacFanSpeed        int     `json:"hvac_fan_speed"`
+	ClimateKeeperMode   int     `json:"climate_keeper_mode"`
+	ChargeEnergyAdded   float64 `json:"charge_energy_added"`
+	FastChargerType     string  `json:"fast_charger_type"`
+	BatteryHeaterOn     bool    `json:"battery_heater_on"`
+	CarType             string  `json:"car_type"`
+	ExteriorColor       string  `json:"exterior_color"`
+	LightsHighBeams     bool    `json:"lights_high_beams"`
+	LightsHazardsActive bool    `json:"lights_hazards_active"`
+	LightsTurnSignal    string  `json:"lights_turn_signal"`
+	BrakePedal          bool    `json:"brake_pedal"`
+	DriveRail           bool    `json:"drive_rail"`
+	PedalPosition       float64 `json:"pedal_position"`
+	GuestModeEnabled    bool    `json:"guest_mode_enabled"`
+	ServiceMode         bool    `json:"service_mode"`
+	DestinationLatitude  float64 `json:"destination_latitude"`
+	DestinationLongitude float64 `json:"destination_longitude"`
+	DestinationName      string  `json:"destination_name"`
 }
 
 // VirtualKeyStatus 虚拟钥匙状态
@@ -523,6 +809,26 @@ func deriveVehicleState(data *VehicleData) string {
 	return "offline"
 }
 
+// deriveHvacPower 根据 ClimateState 推导 HVAC 功率（kW）
+// Tesla API 不直接提供 HVAC 功率，根据空调状态估算
+func deriveHvacPower(cs ClimateState) float64 {
+	if !cs.IsClimateOn {
+		return 0
+	}
+	// 粗略估算：空调开启时约 1-3kW，PTC 加热时可达 5-6kW
+	power := 1.0
+	if cs.DefrostMode > 0 {
+		power += 2.0
+	}
+	if cs.SteeringWheelHeat {
+		power += 0.3
+	}
+	if cs.SeatHeaterLeft > 0 || cs.SeatHeaterRight > 0 {
+		power += 0.2
+	}
+	return power
+}
+
 // GetVehicleState 获取车辆状态（简化数据）
 func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error) {
 	data, err := GetVehicleData(accessToken, vehicleTag)
@@ -598,6 +904,18 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		PassengerTempSetting: data.Response.ClimateState.PassengerTempSetting,
 		IsACOn:      data.Response.ClimateState.IsClimateOn,
 		IsClimateOn: data.Response.ClimateState.IsClimateOn,
+		SeatHeaterLeft:      data.Response.ClimateState.SeatHeaterLeft,
+		SeatHeaterRight:     data.Response.ClimateState.SeatHeaterRight,
+		SeatHeaterRearLeft:  data.Response.ClimateState.SeatHeaterRearLeft,
+		SeatHeaterRearRight: data.Response.ClimateState.SeatHeaterRearRight,
+		SeatHeaterRearCenter: data.Response.ClimateState.SeatHeaterRearCenter,
+		SteeringWheelHeater: data.Response.ClimateState.SteeringWheelHeat,
+		DefrostMode:         data.Response.ClimateState.DefrostMode,
+		HvacPower:           deriveHvacPower(data.Response.ClimateState),
+		HvacACEnabled:       data.Response.ClimateState.IsAirConditioningOn,
+		HvacAutoMode:        data.Response.ClimateState.AutoConditioningEnabled,
+		HvacFanSpeed:        data.Response.ClimateState.FanStatus,
+		ClimateKeeperMode:   data.Response.ClimateState.ClimateKeeperMode,
 		Version:     data.Response.VehicleState.CarVersion,
 		TpmsFL: data.Response.VehicleState.TPMSPressureFL,
 		TpmsFR: data.Response.VehicleState.TPMSPressureFR,
@@ -606,12 +924,31 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		BatteryTemp:   data.Response.ClimateState.BatteryTemp,
 		ChargerPhases: 0,
 		Lightweight:   false,
+		ChargeEnergyAdded:  data.Response.ChargeState.ChargeEnergyAdded,
+		FastChargerType:    data.Response.ChargeState.FastChargerType,
+		BatteryHeaterOn:    data.Response.ChargeState.BatteryHeaterOn,
+		CarType:            data.Response.VehicleConfig.CarType,
+		ExteriorColor:      data.Response.VehicleConfig.ExteriorColor,
+		LightsHighBeams:    data.Response.DriveState.LightsHighBeams,
+		LightsHazardsActive: data.Response.VehicleState.LightsHazardsActive,
+		LightsTurnSignal:   data.Response.DriveState.LightsTurnSignal,
+		BrakePedal:         data.Response.DriveState.BrakePedal,
+		DriveRail:          data.Response.DriveState.DriveRail,
+		PedalPosition:      data.Response.DriveState.AcceleratorPedalPos,
+		GuestModeEnabled:   data.Response.VehicleState.GuestModeEnabled,
+		ServiceMode:        data.Response.VehicleState.ServiceMode,
+		DestinationLatitude:  data.Response.DriveState.ActiveRouteLatitude,
+		DestinationLongitude: data.Response.DriveState.ActiveRouteLongitude,
+		DestinationName:      data.Response.DriveState.ActiveRouteName,
 		MediaPlaybackStatus: data.Response.MediaInfo.PlaybackStatus,
 		MediaAudioSource:    data.Response.MediaInfo.AudioSource,
 		MediaVolume:         data.Response.MediaInfo.Volume,
 		NowPlayingTitle:     data.Response.MediaInfo.NowPlayingTitle,
 		NowPlayingArtist:    data.Response.MediaInfo.NowPlayingArtist,
 		NowPlayingAlbum:     data.Response.MediaInfo.NowPlayingAlbum,
+		NowPlayingStation:   data.Response.MediaInfo.NowPlayingStation,
+		NowPlayingDuration:  data.Response.MediaInfo.NowPlayingDuration,
+		NowPlayingElapsed:   data.Response.MediaInfo.NowPlayingElapsed,
 		CenterDisplayState:  data.Response.VehicleState.CenterDisplayState,
 	}, nil
 }
@@ -880,59 +1217,311 @@ type TelemetryConfigRequest struct {
 }
 
 type TelemetryConfigPayload struct {
-	Hostname string                     `json:"hostname"`
-	Fields   map[string]TelemetryField  `json:"fields"`
+	Hostname string                    `json:"hostname"`
+	Port     int                       `json:"port"`
+	Fields   map[string]TelemetryField `json:"fields"`
+	CA       string                    `json:"ca,omitempty"` // 服务器 CA 证书（PEM 格式）
 }
 
 type TelemetryField struct {
-	MinInterval int `json:"min_interval,omitempty"`
-	MaxInterval int `json:"max_interval,omitempty"`
+	IntervalSeconds int `json:"interval_seconds"`
 }
 
 type TelemetryConfigResponse struct {
 	Response struct {
-		SuccessfulVINs  []string `json:"successful_vins"`
+		SuccessfulVINs  []string `json:"successful_vins,omitempty"`
 		SkippedVINs     []string `json:"skipped_vins,omitempty"`
+		UpdatedVehicles int      `json:"updated_vehicles,omitempty"`
 	} `json:"response"`
 	Error string `json:"error,omitempty"`
 }
 
-func ConfigureFleetTelemetry(accessToken string, vins []string, hostname string) (*TelemetryConfigResponse, error) {
+func ConfigureFleetTelemetry(accessToken string, vins []string, hostname string, caCertFile string) (*TelemetryConfigResponse, error) {
 	cfg := config.Load()
-	url := fmt.Sprintf("%s/api/1/vehicles/fleet_telemetry_config", cfg.Tesla.FleetAPIURL)
 
-	mediaFields := map[string]TelemetryField{
-		"MediaPlaybackStatus": {MinInterval: 1, MaxInterval: 600},
-		"MediaAudioSource":    {MinInterval: 1, MaxInterval: 600},
-		"MediaVolume":         {MinInterval: 1, MaxInterval: 600},
-		"NowPlayingTitle":     {MinInterval: 1, MaxInterval: 600},
-		"NowPlayingArtist":    {MinInterval: 1, MaxInterval: 600},
-		"NowPlayingAlbum":     {MinInterval: 1, MaxInterval: 600},
-		"NowPlayingDuration":  {MinInterval: 1, MaxInterval: 600},
-		"NowPlayingElapsed":   {MinInterval: 1, MaxInterval: 600},
+	// 检查 VCP 是否配置
+	if cfg.Tesla.VCPURL == "" {
+		return nil, fmt.Errorf("VCP URL not configured, fleet telemetry config requires VCP proxy")
+	}
+
+	// 通过 VCP 代理发送
+	url := fmt.Sprintf("%s/api/1/vehicles/fleet_telemetry_config", strings.TrimRight(cfg.Tesla.VCPURL, "/"))
+
+	// Tesla Fleet Telemetry 配置字段
+	// 官方机制：车辆每 500ms 刷新一次数据桶，将所有已发射的字段值推送到服务器
+	// 每个字段只在 interval_seconds 已过 且 值已变化 时才发射到数据桶
+	// interval_seconds 最小值参考：https://teslemetry.com/docs/topics/telemetry-fields
+	// 字段名必须来自官方文档：https://developer.tesla.cn/docs/fleet-api/fleet-telemetry/available-data
+	telemetryFields := map[string]TelemetryField{
+		// 媒体数据 (Media) - 1s
+		"MediaNowPlayingTitle":    {IntervalSeconds: 1},
+		"MediaNowPlayingArtist":   {IntervalSeconds: 1},
+		"MediaNowPlayingAlbum":    {IntervalSeconds: 1},
+		"MediaNowPlayingDuration": {IntervalSeconds: 1},
+		"MediaNowPlayingElapsed":  {IntervalSeconds: 1},
+		"MediaNowPlayingStation":  {IntervalSeconds: 1},
+		"MediaPlaybackSource":     {IntervalSeconds: 1},
+		"MediaPlaybackStatus":     {IntervalSeconds: 1},
+		"MediaAudioVolume":        {IntervalSeconds: 1},
+		"MediaAudioVolumeIncrement": {IntervalSeconds: 1},
+		"MediaAudioVolumeMax":     {IntervalSeconds: 1},
+
+		// 行驶数据 (Driving) - 1s
+		"VehicleSpeed":             {IntervalSeconds: 1},
+		"Gear":                     {IntervalSeconds: 1},
+		"DriveRail":                {IntervalSeconds: 1},
+		"PedalPosition":            {IntervalSeconds: 1},
+		"BrakePedal":               {IntervalSeconds: 1},
+		"BrakePedalPos":            {IntervalSeconds: 10},
+		"LateralAcceleration":      {IntervalSeconds: 1},
+		"LongitudinalAcceleration": {IntervalSeconds: 1},
+		"DiStateF":                 {IntervalSeconds: 1},
+		"DiStateR":                 {IntervalSeconds: 1},
+		"DiTorqueActualF":          {IntervalSeconds: 1},
+		"DiTorqueActualR":          {IntervalSeconds: 1},
+		"DiAxleSpeedF":             {IntervalSeconds: 1},
+		"DiAxleSpeedR":             {IntervalSeconds: 1},
+		"DiStatorTempF":            {IntervalSeconds: 1},
+		"DiStatorTempR":            {IntervalSeconds: 1},
+		"DiHeatsinkTF":             {IntervalSeconds: 1},
+		"DiHeatsinkTR":             {IntervalSeconds: 1},
+		"DiInverterTF":             {IntervalSeconds: 1},
+		"DiInverterTR":             {IntervalSeconds: 1},
+		"DiMotorCurrentF":          {IntervalSeconds: 1},
+		"DiMotorCurrentR":          {IntervalSeconds: 1},
+		"DiVBatF":                  {IntervalSeconds: 1},
+		"DiVBatR":                  {IntervalSeconds: 1},
+		"DiSlaveTorqueCmd":         {IntervalSeconds: 1},
+		"DiTorquemotor":            {IntervalSeconds: 1},
+		"LifetimeEnergyUsedDrive":  {IntervalSeconds: 10},
+
+		// 充电数据 (Charging) - 1s
+		"BatteryLevel":        {IntervalSeconds: 1},
+		"Soc":                 {IntervalSeconds: 1},
+		"EnergyRemaining":     {IntervalSeconds: 1},
+		"EstBatteryRange":     {IntervalSeconds: 1},
+		"IdealBatteryRange":   {IntervalSeconds: 1},
+		"RatedRange":          {IntervalSeconds: 1},
+		"ChargeState":         {IntervalSeconds: 1},
+		"DetailedChargeState": {IntervalSeconds: 1},
+		"ChargeLimitSoc":      {IntervalSeconds: 1},
+		"TimeToFullCharge":    {IntervalSeconds: 1},
+		"EstimatedHoursToChargeTermination": {IntervalSeconds: 1},
+		"PackCurrent":         {IntervalSeconds: 1},
+		"PackVoltage":         {IntervalSeconds: 1},
+		"DCChargingPower":     {IntervalSeconds: 1},
+		"DCChargingEnergyIn":  {IntervalSeconds: 1},
+		"ACChargingPower":     {IntervalSeconds: 1},
+		"ACChargingEnergyIn":  {IntervalSeconds: 1},
+		"FastChargerPresent":  {IntervalSeconds: 1},
+		"FastChargerType":     {IntervalSeconds: 1},
+		"ChargerVoltage":      {IntervalSeconds: 1},
+		"ChargeAmps":          {IntervalSeconds: 1},
+		"ChargeCurrentRequest":    {IntervalSeconds: 1},
+		"ChargeCurrentRequestMax": {IntervalSeconds: 1},
+		"ChargerPhases":           {IntervalSeconds: 1},
+		"ChargingCableType":       {IntervalSeconds: 1},
+		"ChargePortDoorOpen":      {IntervalSeconds: 1},
+		"ChargePortLatch":         {IntervalSeconds: 1},
+		"ChargePortColdWeatherMode": {IntervalSeconds: 1},
+		"ChargeRateMilePerHour":   {IntervalSeconds: 1},
+		"BatteryHeaterOn":         {IntervalSeconds: 1},
+		"PreconditioningEnabled":  {IntervalSeconds: 1},
+		"BMSState":                {IntervalSeconds: 1},
+		"BmsFullchargecomplete":   {IntervalSeconds: 1},
+		"DCDCEnable":              {IntervalSeconds: 1},
+		"LifetimeEnergyUsed":      {IntervalSeconds: 10},
+		"ModuleTempMax":           {IntervalSeconds: 1},
+		"ModuleTempMin":           {IntervalSeconds: 1},
+		"NumModuleTempMax":        {IntervalSeconds: 1},
+		"NumModuleTempMin":        {IntervalSeconds: 1},
+		"BrickVoltageMax":         {IntervalSeconds: 10},
+		"BrickVoltageMin":         {IntervalSeconds: 10},
+		"NumBrickVoltageMax":      {IntervalSeconds: 10},
+		"NumBrickVoltageMin":      {IntervalSeconds: 10},
+		"NotEnoughPowerToHeat":    {IntervalSeconds: 1},
+		"SuperchargerSessionTripPlanner": {IntervalSeconds: 1},
+
+		// Powershare 数据 - 1s
+		"PowershareStatus":              {IntervalSeconds: 1},
+		"PowershareType":                {IntervalSeconds: 1},
+		"PowershareInstantaneousPowerKW": {IntervalSeconds: 1},
+		"PowershareHoursLeft":           {IntervalSeconds: 1},
+		"PowershareStopReason":          {IntervalSeconds: 1},
+
+		// 空调数据 (Climate) - 1s
+		"InsideTemp":                   {IntervalSeconds: 1},
+		"OutsideTemp":                  {IntervalSeconds: 1},
+		"HvacPower":                    {IntervalSeconds: 1},
+		"HvacACEnabled":                {IntervalSeconds: 1},
+		"HvacAutoMode":                 {IntervalSeconds: 1},
+		"HvacFanSpeed":                 {IntervalSeconds: 1},
+		"HvacFanStatus":                {IntervalSeconds: 1},
+		"HvacLeftTemperatureRequest":   {IntervalSeconds: 1},
+		"HvacRightTemperatureRequest":  {IntervalSeconds: 1},
+		"ClimateKeeperMode":            {IntervalSeconds: 1},
+		"CabinOverheatProtectionMode":  {IntervalSeconds: 1},
+		"CabinOverheatProtectionTemperatureLimit": {IntervalSeconds: 1},
+		"DefrostMode":                  {IntervalSeconds: 1},
+		"DefrostForPreconditioning":    {IntervalSeconds: 1},
+		"HvacSteeringWheelHeatLevel":   {IntervalSeconds: 1},
+		"HvacSteeringWheelHeatAuto":    {IntervalSeconds: 1},
+		"SeatHeaterLeft":               {IntervalSeconds: 1},
+		"SeatHeaterRight":              {IntervalSeconds: 1},
+		"SeatHeaterRearLeft":           {IntervalSeconds: 1},
+		"SeatHeaterRearRight":          {IntervalSeconds: 1},
+		"SeatHeaterRearCenter":         {IntervalSeconds: 1},
+		"ClimateSeatCoolingFrontLeft":  {IntervalSeconds: 1},
+		"ClimateSeatCoolingFrontRight": {IntervalSeconds: 1},
+		"AutoSeatClimateLeft":          {IntervalSeconds: 1},
+		"AutoSeatClimateRight":         {IntervalSeconds: 1},
+		"SeatVentEnabled":              {IntervalSeconds: 1},
+		"RearDisplayHvacEnabled":       {IntervalSeconds: 1},
+		"WiperHeatEnabled":             {IntervalSeconds: 1},
+
+		// 定位数据 (Location) - 1s
+		"Location":            {IntervalSeconds: 1},
+		"GpsHeading":          {IntervalSeconds: 1},
+		"GpsState":            {IntervalSeconds: 1},
+		"DestinationLocation": {IntervalSeconds: 1},
+		"DestinationName":     {IntervalSeconds: 1},
+		"OriginLocation":      {IntervalSeconds: 1},
+		"RouteLine":           {IntervalSeconds: 1},
+		"RouteTrafficMinutesDelay": {IntervalSeconds: 1},
+		"MilesToArrival":     {IntervalSeconds: 1},
+		"MinutesToArrival":   {IntervalSeconds: 1},
+		"ExpectedEnergyPercentAtTripArrival": {IntervalSeconds: 1},
+		"LocatedAtHome":      {IntervalSeconds: 1},
+		"LocatedAtWork":      {IntervalSeconds: 1},
+		"LocatedAtFavorite":  {IntervalSeconds: 1},
+		"RouteLastUpdated":   {IntervalSeconds: 1},
+
+		// 车辆状态 (Vehicle State) - 1s
+		"Locked":        {IntervalSeconds: 1},
+		"DoorState":     {IntervalSeconds: 1},
+		"FdWindow":      {IntervalSeconds: 1},
+		"FpWindow":      {IntervalSeconds: 1},
+		"RdWindow":      {IntervalSeconds: 1},
+		"RpWindow":      {IntervalSeconds: 1},
+		"Odometer":      {IntervalSeconds: 1},
+		"CenterDisplay": {IntervalSeconds: 1},
+		"SentryMode":    {IntervalSeconds: 1},
+		"ServiceMode":   {IntervalSeconds: 1},
+		"GuestModeEnabled":         {IntervalSeconds: 1},
+		"GuestModeMobileAccessState": {IntervalSeconds: 1},
+		"HomelinkDeviceCount":      {IntervalSeconds: 1},
+		"HomelinkNearby":           {IntervalSeconds: 1},
+		"LightsHazardsActive":      {IntervalSeconds: 1},
+		"LightsHighBeams":          {IntervalSeconds: 1},
+		"LightsTurnSignal":         {IntervalSeconds: 1},
+		"DriverSeatOccupied":       {IntervalSeconds: 1},
+		"DriverSeatBelt":           {IntervalSeconds: 1},
+		"PassengerSeatBelt":        {IntervalSeconds: 1},
+		"PairedPhoneKeyAndKeyFobQty": {IntervalSeconds: 1},
+		"PinToDriveEnabled":        {IntervalSeconds: 1},
+
+		// 安全/ADAS 数据 - 1s
+		"AutomaticBlindSpotCamera":       {IntervalSeconds: 1},
+		"BlindSpotCollisionWarningChime": {IntervalSeconds: 1},
+		"ForwardCollisionWarning":        {IntervalSeconds: 1},
+		"LaneDepartureAvoidance":         {IntervalSeconds: 1},
+		"EmergencyLaneDepartureAvoidance": {IntervalSeconds: 1},
+		"AutomaticEmergencyBrakingOff":   {IntervalSeconds: 1},
+		"CurrentLimitMph":                {IntervalSeconds: 1},
+		"MilesSinceReset":                {IntervalSeconds: 1},
+		"SelfDrivingMilesSinceReset":     {IntervalSeconds: 1},
+
+		// 胎压 (TPMS) - 5s
+		"TpmsPressureFl": {IntervalSeconds: 5},
+		"TpmsPressureFr": {IntervalSeconds: 5},
+		"TpmsPressureRl": {IntervalSeconds: 5},
+		"TpmsPressureRr": {IntervalSeconds: 5},
+		"TpmsLastSeenPressureTimeFl": {IntervalSeconds: 5},
+		"TpmsLastSeenPressureTimeFr": {IntervalSeconds: 5},
+		"TpmsLastSeenPressureTimeRl": {IntervalSeconds: 5},
+		"TpmsLastSeenPressureTimeRr": {IntervalSeconds: 5},
+		"TpmsSoftWarnings":    {IntervalSeconds: 5},
+		"TpmsHardWarnings":    {IntervalSeconds: 5},
+		"IsolationResistance": {IntervalSeconds: 5},
+
+		// 车辆配置 (Vehicle Config) - 10s
+		"CarType":               {IntervalSeconds: 10},
+		"Trim":                  {IntervalSeconds: 10},
+		"VehicleName":           {IntervalSeconds: 10},
+		"Version":               {IntervalSeconds: 10},
+		"ExteriorColor":         {IntervalSeconds: 10},
+		"RoofColor":             {IntervalSeconds: 10},
+		"WheelType":             {IntervalSeconds: 10},
+		"EuropeVehicle":         {IntervalSeconds: 10},
+		"RightHandDrive":        {IntervalSeconds: 10},
+		"EfficiencyPackage":     {IntervalSeconds: 10},
+		"RearSeatHeaters":       {IntervalSeconds: 10},
+		"SunroofInstalled":      {IntervalSeconds: 10},
+		"RemoteStartEnabled":    {IntervalSeconds: 10},
+		"Setting24HourTime":     {IntervalSeconds: 10},
+		"SettingChargeUnit":     {IntervalSeconds: 10},
+		"SettingDistanceUnit":   {IntervalSeconds: 10},
+		"SettingTemperatureUnit": {IntervalSeconds: 10},
+		"SettingTirePressureUnit": {IntervalSeconds: 10},
+
+		// 软件更新 (Software Update) - 5s
+		"SoftwareUpdateVersion":                      {IntervalSeconds: 5},
+		"SoftwareUpdateDownloadPercentComplete":       {IntervalSeconds: 5},
+		"SoftwareUpdateExpectedDurationMinutes":       {IntervalSeconds: 5},
+		"SoftwareUpdateInstallationPercentComplete":   {IntervalSeconds: 5},
+		"SoftwareUpdateScheduledStartTime":            {IntervalSeconds: 5},
+
+		// Cybertruck - 1s
+		"TonneauPosition":      {IntervalSeconds: 1},
+		"TonneauOpenPercent":   {IntervalSeconds: 1},
+		"TonneauTentMode":      {IntervalSeconds: 1},
+		"OffroadLightbarPresent": {IntervalSeconds: 1},
+	}
+
+	// 读取 CA 证书（如果有）
+	var caCertPEM string
+	if caCertFile != "" {
+		caData, err := os.ReadFile(caCertFile)
+		if err != nil {
+			log.Printf("[VCP] Warning: failed to read CA cert file %s: %v", caCertFile, err)
+		} else {
+			caCertPEM = string(caData)
+			log.Printf("[VCP] Loaded CA cert from %s", caCertFile)
+		}
+	}
+
+	// 解析端口号（默认 443）
+	port := 443
+	if cfg.Telemetry.ListenAddr != "" && cfg.Telemetry.ListenAddr[0] == ':' {
+		if p, err := strconv.Atoi(cfg.Telemetry.ListenAddr[1:]); err == nil {
+			port = p
+		}
 	}
 
 	reqBody := TelemetryConfigRequest{
 		VINs: vins,
 		Config: TelemetryConfigPayload{
 			Hostname: hostname,
-			Fields:   mediaFields,
+			Port:     port,
+			Fields:   telemetryFields,
+			CA:       caCertPEM,
 		},
 	}
 
-	log.Printf("[Fleet API] Configuring Fleet Telemetry for %d vehicles, hostname=%s", len(vins), hostname)
+	log.Printf("[VCP] Configuring Fleet Telemetry for %d vehicles, hostname=%s", len(vins), hostname)
 
-	resp, err := client.R().
+	resp, err := vcpClient.R().
 		SetHeader("Authorization", "Bearer "+accessToken).
 		SetHeader("Content-Type", "application/json").
 		SetBody(reqBody).
 		Post(url)
 
 	if err != nil {
-		return nil, fmt.Errorf("fleet telemetry config request failed: %w", err)
+		return nil, fmt.Errorf("fleet telemetry config request via VCP failed: %w", err)
 	}
 
-	log.Printf("[Fleet API] fleet_telemetry_config status: %d", resp.StatusCode())
+	log.Printf("[VCP] fleet_telemetry_config status: %d", resp.StatusCode())
+	log.Printf("[VCP] fleet_telemetry_config response: %s", string(resp.Body()))
 
 	var result TelemetryConfigResponse
 	if err := json.Unmarshal(resp.Body(), &result); err != nil {
@@ -943,8 +1532,8 @@ func ConfigureFleetTelemetry(accessToken string, vins []string, hostname string)
 		return &result, fmt.Errorf("fleet telemetry config error: %s", result.Error)
 	}
 
-	log.Printf("[Fleet API] Telemetry config: successful=%v, skipped=%v",
-		result.Response.SuccessfulVINs, result.Response.SkippedVINs)
+	log.Printf("[VCP] Telemetry config: successful=%v, skipped=%v, updated_vehicles=%d",
+		result.Response.SuccessfulVINs, result.Response.SkippedVINs, result.Response.UpdatedVehicles)
 
 	return &result, nil
 }

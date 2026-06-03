@@ -54,16 +54,18 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getAnalysisList } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
+import { useVehicleData } from '@/utils/vehicle-data.js'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
 const hintColor = computed(() => themeStore.colors.hint)
+const vehicleStore = useVehicleData()
 
 const vin = ref('')
 const list = ref([])
@@ -76,6 +78,13 @@ const filter = ref('')
 onLoad((options) => {
   vin.value = options?.vin || ''
   if (vin.value) loadList()
+})
+
+watch(() => vehicleStore.analysisNotification, (notification) => {
+  if (!notification) return
+  if (notification.type === 'analysis_complete' && (notification.analysisType === 'charging' || notification.analysisType === 'charging_monthly')) {
+    resetList()
+  }
 })
 
 const loadList = async () => {

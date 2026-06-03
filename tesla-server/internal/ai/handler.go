@@ -10,6 +10,7 @@ import (
 	"tesla-server/internal/database"
 	"tesla-server/internal/middleware"
 	"tesla-server/internal/redis"
+	"tesla-server/internal/ws"
 	"tesla-server/models"
 	"time"
 
@@ -238,6 +239,12 @@ func RunTripAnalysis(vin string, userID uint64, refID string) {
 	}
 	database.DB.Create(&analysis)
 	log.Printf("[AI] Trip analysis completed: vin=%s refID=%s", vin, refID)
+	// 通知前端分析完成
+	ws.DefaultHub.BroadcastToVIN(vin, "analysis_complete", map[string]interface{}{
+		"type":   "trip",
+		"ref_id": refID,
+		"status": "completed",
+	})
 }
 
 func RunChargingAnalysis(vin string, userID uint64, refID string) {
@@ -316,6 +323,12 @@ func RunChargingAnalysis(vin string, userID uint64, refID string) {
 	}
 	database.DB.Create(&analysis)
 	log.Printf("[AI] Charging analysis completed: vin=%s refID=%s", vin, refID)
+	// 通知前端分析完成
+	ws.DefaultHub.BroadcastToVIN(vin, "analysis_complete", map[string]interface{}{
+		"type":   "charging",
+		"ref_id": refID,
+		"status": "completed",
+	})
 }
 
 func RunVehicleAnalysis(vin string, userID uint64, date string) {
@@ -384,6 +397,12 @@ func RunVehicleAnalysis(vin string, userID uint64, date string) {
 	}
 	database.DB.Create(&analysis)
 	log.Printf("[AI] Vehicle analysis completed: vin=%s date=%s", vin, date)
+	// 通知前端分析完成
+	ws.DefaultHub.BroadcastToVIN(vin, "analysis_complete", map[string]interface{}{
+		"type":   "vehicle",
+		"ref_id": refID,
+		"status": "completed",
+	})
 }
 
 func formatAnalysis(a *models.AIAnalysis) gin.H {

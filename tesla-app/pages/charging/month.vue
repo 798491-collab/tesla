@@ -43,7 +43,7 @@
       </view>
       <view class="ai-card-body">
         <view class="ai-spinner"></view>
-        <text class="ai-loading-text">AI 正在分析中...</text>
+        <text class="ai-loading-text">分析生成中...</text>
       </view>
     </view>
 
@@ -139,18 +139,20 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getChargingLogs, updateChargingPrice } from '@/api/charging.js'
-import { getChargingAnalysis, triggerChargingAnalysis } from '@/api/ai.js'
+import { getChargingAnalysis } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
+import { useVehicleData } from '@/utils/vehicle-data.js'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
 const primaryColor = computed(() => themeStore.colors.primary)
 const hintColor = computed(() => themeStore.colors.hint)
+const vehicleStore = useVehicleData()
 
 const logs = ref([])
 const month = ref('')
@@ -228,19 +230,29 @@ const loadAIAnalysis = async () => {
     const res = await getChargingAnalysis(vin.value, refId)
     if (res?.data) {
       aiResult.value = res.data
+      aiLoading.value = false
     } else {
       aiLoading.value = true
-      await triggerChargingAnalysis(vin.value, refId)
-      setTimeout(async () => {
-        const res2 = await getChargingAnalysis(vin.value, refId)
-        if (res2?.data) aiResult.value = res2.data
-        aiLoading.value = false
-      }, 15000)
     }
   } catch (e) {
     aiLoading.value = false
   }
 }
+
+watch(() => vehicleStore.analysisNotification, (notification) => {
+  if (!notification) return
+  const monthlyRefId = `charging_monthly:${month.value}`
+  if (notification.type === 'analysis_complete' && notification.refId === monthlyRefId) {
+    loadAIAnalysis()
+  }
+  // 单次充电分析完成时刷新
+  if (notification.type === 'analysis_complete' && notification.refId?.startsWith('charging:')) {
+    const chargeId = notification.refId.replace('charging:', '')
+    if (chargingAiLoadingMap.value[chargeId]) {
+      loadChargeAI(chargeId)
+    }
+  }
+})
 
 const formatAITime = (t) => {
   if (!t) return ''
@@ -257,26 +269,24 @@ const toggleChargeAI = async (log) => {
 
   if (chargingAiMap.value[log.id] || chargingAiLoadingMap.value[log.id]) return
 
-  const refId = `charging:${log.id}`
-  chargingAiLoadingMap.value[log.id] = true
+  await loadChargeAI(log.id)
+}
+
+const loadChargeAI = async (chargeId) => {
+  const refId = `charging:${chargeId}`
+  chargingAiLoadingMap.value[chargeId] = true
 
   try {
     const res = await getChargingAnalysis(vin.value, refId)
     if (res?.data) {
-      chargingAiMap.value[log.id] = res.data
+      chargingAiMap.value[chargeId] = res.data
+      chargingAiLoadingMap.value[chargeId] = false
     } else {
-      await triggerChargingAnalysis(vin.value, refId)
-      setTimeout(async () => {
-        const res2 = await getChargingAnalysis(vin.value, refId)
-        if (res2?.data) {
-          chargingAiMap.value[log.id] = res2.data
-        }
-        chargingAiLoadingMap.value[log.id] = false
-      }, 15000)
-      return
+      // 后端会自动分析，等待 WS 通知
     }
-  } catch (e) {}
-  chargingAiLoadingMap.value[log.id] = false
+  } catch (e) {
+    chargingAiLoadingMap.value[chargeId] = false
+  }
 }
 
 const toggleChargeAIDetail = (logId) => {

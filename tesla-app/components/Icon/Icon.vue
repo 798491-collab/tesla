@@ -1,26 +1,13 @@
 <template>
   <view class="icon-wrapper" :style="wrapperStyle">
 
-    <!-- 本地 SVG -->
+    <!-- SVG image（本地 + vicons 都走 base64） -->
     <image
       v-if="iconSrc"
       :src="iconSrc"
       :style="imageStyle"
       mode="aspectFit"
     />
-
-    <!-- vicons -->
-    <view
-      v-else-if="iconComponent"
-      class="vicon-wrap"
-    >
-      <component
-        :is="iconComponent"
-        :size="sizeNum"
-        :color="color"
-        class="vicon"
-      />
-    </view>
 
     <!-- fallback -->
     <view v-else class="empty-icon"></view>
@@ -30,7 +17,6 @@
 
 <script setup>
 import { computed } from 'vue'
-import * as VIcons from '@vicons/ionicons5'
 import iconData from '@/utils/iconPaths.js'
 
 const props = defineProps({
@@ -48,15 +34,6 @@ const props = defineProps({
   }
 })
 
-/**
- * size 统一成 number（给 vicons 用）
- */
-const sizeNum = computed(() => {
-  return typeof props.size === 'number'
-    ? props.size
-    : parseInt(props.size) || 24
-})
-
 const sizeStr = computed(() => {
   return typeof props.size === 'number'
     ? `${props.size}px`
@@ -71,31 +48,27 @@ const localIcon = computed(() => {
 })
 
 /**
- * vicons
- */
-const iconComponent = computed(() => {
-  return VIcons[props.name] || null
-})
-
-/**
  * SVG base64（App/H5 都稳定）
  */
 const iconSrc = computed(() => {
-  if (!localIcon.value) return ''
+  // 优先使用本地图标
+  if (localIcon.value) {
+    let content = localIcon.value.content
+    content = content.replace(/currentColor/g, props.color)
 
-  let content = localIcon.value.content
-
-  content = content.replace(/currentColor/g, props.color)
-
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg"
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"
       viewBox="${localIcon.value.viewBox}"
       fill="${props.color}">
       ${content}
-    </svg>
-  `
+    </svg>`
 
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  }
+
+  // 回退：从 vicons 组件渲染 SVG
+  // uni-app 不支持 <component :is="">，所以这里无法动态渲染
+  // 所有图标应通过 iconPaths.js 提供
+  return ''
 })
 
 /**
@@ -122,21 +95,6 @@ const imageStyle = computed(() => ({
   line-height: 1;
 }
 
-.vicon-wrap {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* vicons */
-.vicon {
-  width: 100%;
-  height: 100%;
-}
-
-/* fallback */
 .empty-icon {
   width: 100%;
   height: 100%;

@@ -9,6 +9,7 @@ import (
 	"tesla-server/internal/fleet"
 	"tesla-server/internal/geo"
 	"tesla-server/internal/redis"
+	"tesla-server/internal/ws"
 	"tesla-server/models"
 	"time"
 )
@@ -252,6 +253,12 @@ func endTrip(vin string, data *fleet.SimpleVehicleData) {
 		if err := database.DB.Where("vin = ? AND bind_status = 1", vin).First(&v).Error; err == nil {
 			refID := fmt.Sprintf("trip:%d", state.TripID)
 			go ai.RunTripAnalysis(vin, v.UserID, refID)
+			// 通知前端行程已结束并开始AI分析
+			ws.DefaultHub.BroadcastToVIN(vin, "trip_ended", map[string]interface{}{
+				"trip_id": state.TripID,
+				"ref_id":  refID,
+				"status":  "analyzing",
+			})
 		}
 	}()
 }

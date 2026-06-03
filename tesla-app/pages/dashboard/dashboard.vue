@@ -123,8 +123,9 @@
                             <text class="media-track-title">{{ nowPlayingTitle || '未在播放' }}</text>
                             <view class="media-track-meta">
                                 <text class="media-track-artist" v-if="nowPlayingArtist">{{ nowPlayingArtist }}</text>
+                                <text class="media-track-station" v-if="nowPlayingStation && !nowPlayingArtist">{{ nowPlayingStation }}</text>
                                 <text class="media-track-source" v-if="mediaAudioSource">{{ mediaSourceLabel }}</text>
-                                <text class="media-track-artist" v-if="!nowPlayingArtist && !mediaAudioSource">点击控制车载媒体</text>
+                                <text class="media-track-artist" v-if="!nowPlayingArtist && !mediaAudioSource && !nowPlayingStation">点击控制车载媒体</text>
                             </view>
                         </view>
                     </view>
@@ -138,6 +139,14 @@
                         <view class="media-ctrl" @click="handleMediaNext">
                             <text class="media-ctrl-icon">⏭</text>
                         </view>
+                    </view>
+                    <!-- 播放进度条 -->
+                    <view class="media-progress-row" v-if="nowPlayingDuration > 0">
+                        <text class="media-progress-time">{{ formatMediaTime(nowPlayingElapsed) }}</text>
+                        <view class="media-progress-track">
+                            <view class="media-progress-fill" :style="{ width: mediaProgressPercent + '%' }"></view>
+                        </view>
+                        <text class="media-progress-time">{{ formatMediaTime(nowPlayingDuration) }}</text>
                     </view>
                     <view class="media-volume-row">
                         <view class="media-vol-btn" @click="handleVolumeDown">
@@ -317,6 +326,9 @@
         useUserStore
     } from '@/store/user'
     import {
+        useDashboardStore
+    } from '@/store/dashboard'
+    import {
         useVehicleData,
         initVehicleData,
         destroyVehicleData
@@ -361,6 +373,7 @@
 
     const vehicleStore = useVehicleStore()
     const themeStore = useThemeStore()
+    const dashboardStore = useDashboardStore()
     const themeClass = computed(() => themeStore.themeClass)
     const isDarkTheme = computed(() => themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro')
     const primaryColor = computed(() => themeStore.colors.primary)
@@ -455,9 +468,27 @@
     const climateOn = computed(() => vehicleData.value?.is_ac_on)
     const mediaPlaybackStatus = computed(() => vehicleData.value?.media_playback_status || 'Stopped')
     const mediaAudioSource = computed(() => vehicleData.value?.media_audio_source || '')
-    const mediaVolume = computed(() => vehicleData.value?.media_volume || 0)
+    const mediaVolume = computed(() => {
+        const v = vehicleData.value?.media_volume || 0
+        // Tesla 音量范围 0-10，归一化为百分比
+        return v > 10 ? v : Math.round(v * 10)
+    })
     const nowPlayingTitle = computed(() => vehicleData.value?.now_playing_title || '')
     const nowPlayingArtist = computed(() => vehicleData.value?.now_playing_artist || '')
+    const nowPlayingStation = computed(() => vehicleData.value?.now_playing_station || '')
+    const nowPlayingDuration = computed(() => vehicleData.value?.now_playing_duration || 0)
+    const nowPlayingElapsed = computed(() => vehicleData.value?.now_playing_elapsed || 0)
+    const mediaProgressPercent = computed(() => {
+        if (!nowPlayingDuration.value || nowPlayingDuration.value <= 0) return 0
+        return Math.min(100, Math.round((nowPlayingElapsed.value / nowPlayingDuration.value) * 100))
+    })
+    const formatMediaTime = (ms) => {
+        if (!ms || ms <= 0) return '0:00'
+        const totalSec = Math.floor(ms / 1000)
+        const min = Math.floor(totalSec / 60)
+        const sec = totalSec % 60
+        return `${min}:${sec.toString().padStart(2, '0')}`
+    }
     const isMediaPlaying = computed(() => mediaPlaybackStatus.value === 'Playing')
     const mediaSourceLabel = computed(() => {
         const sourceMap = { Radio: '收音机', Bluetooth: '蓝牙', Streaming: '流媒体', Caraoke: '卡拉OK' }
@@ -510,7 +541,7 @@
 
     const goToInstrument = () => {
         uni.navigateTo({
-            url: '/pages/dashboard/instrument'
+            url: dashboardStore.currentRoute
         })
     }
 
@@ -721,7 +752,7 @@
         }
 
         const isVehicleCharging = d.charging === true || d.charging_state === 'Charging'
-            || d.charge_state === 'charging' || d.charge_state === 'supercharging'
+            || d.charge_state === 'Charging'
         s.charging = isVehicleCharging
 
         s.doors.frontLeft = d.door_fl ? 1 : 0
@@ -747,42 +778,86 @@
         if (isVehicleCharging) {
             // charging mode lights handled by TeslaScene internally
         } else {
-            if (gear === 'D' || gear === 'R') {
-                s.lights.headlightLow = true
-                s.lights.tailLight = true
-                s.lights.brakeLight = gear === 'R'
-                s.lights.drl = false
-                s.lights.headlightHigh = false
-                s.lights.frontFog = false
-                s.lights.rearFog = false
-                s.lights.turnLeft = false
-                s.lights.turnRight = false
-                s.lights.hazard = false
-            } else if (gear === 'N') {
-                s.lights.drl = true
-                s.lights.headlightLow = false
-                s.lights.headlightHigh = false
-                s.lights.tailLight = false
-                s.lights.brakeLight = false
-                s.lights.frontFog = false
-                s.lights.rearFog = false
-                s.lights.turnLeft = false
-                s.lights.turnRight = false
-                s.lights.hazard = false
+            const hasTelemetryLights = d.lights_high_beams !== undefined
+                || d.lights_hazards_active !== undefined
+                || d.lights_turn_signal !== undefined
+
+            if (hasTelemetryLights) {
+                s.lights.headlightHigh = d.lights_high_beams === true
+                s.lights.hazard = d.lights_hazards_active === true
+                    || d.lights_turn_signal === 'hazard'
+
+                if (d.lights_turn_signal === 'left') {
+                    s.lights.turnLeft = true
+                    s.lights.turnRight = false
+                } else if (d.lights_turn_signal === 'right') {
+                    s.lights.turnLeft = false
+                    s.lights.turnRight = true
+                } else {
+                    s.lights.turnLeft = false
+                    s.lights.turnRight = false
+                }
+
+                if (gear === 'D' || gear === 'R') {
+                    s.lights.headlightLow = true
+                    s.lights.tailLight = true
+                    s.lights.brakeLight = gear === 'R'
+                    s.lights.drl = false
+                    s.lights.frontFog = false
+                    s.lights.rearFog = false
+                } else if (gear === 'N') {
+                    s.lights.drl = true
+                    s.lights.headlightLow = false
+                    s.lights.tailLight = false
+                    s.lights.brakeLight = false
+                    s.lights.frontFog = false
+                    s.lights.rearFog = false
+                } else {
+                    s.lights.drl = false
+                    s.lights.headlightLow = false
+                    s.lights.tailLight = false
+                    s.lights.brakeLight = false
+                    s.lights.frontFog = false
+                    s.lights.rearFog = false
+                }
             } else {
-                s.lights.drl = false
-                s.lights.headlightLow = false
-                s.lights.headlightHigh = false
-                s.lights.tailLight = false
-                s.lights.brakeLight = false
-                s.lights.frontFog = false
-                s.lights.rearFog = false
-                s.lights.turnLeft = false
-                s.lights.turnRight = false
-                s.lights.hazard = false
+                if (gear === 'D' || gear === 'R') {
+                    s.lights.headlightLow = true
+                    s.lights.tailLight = true
+                    s.lights.brakeLight = gear === 'R'
+                    s.lights.drl = false
+                    s.lights.headlightHigh = false
+                    s.lights.frontFog = false
+                    s.lights.rearFog = false
+                    s.lights.turnLeft = false
+                    s.lights.turnRight = false
+                    s.lights.hazard = false
+                } else if (gear === 'N') {
+                    s.lights.drl = true
+                    s.lights.headlightLow = false
+                    s.lights.headlightHigh = false
+                    s.lights.tailLight = false
+                    s.lights.brakeLight = false
+                    s.lights.frontFog = false
+                    s.lights.rearFog = false
+                    s.lights.turnLeft = false
+                    s.lights.turnRight = false
+                    s.lights.hazard = false
+                } else {
+                    s.lights.drl = false
+                    s.lights.headlightLow = false
+                    s.lights.headlightHigh = false
+                    s.lights.tailLight = false
+                    s.lights.brakeLight = false
+                    s.lights.frontFog = false
+                    s.lights.rearFog = false
+                    s.lights.turnLeft = false
+                    s.lights.turnRight = false
+                    s.lights.hazard = false
+                }
             }
 
-            if (s.sentryMode && gear === 'P') {
+            if (s.sentryMode && gear === 'P' && !s.lights.hazard) {
                 s.lights.hazard = true
             }
         }
@@ -1262,6 +1337,14 @@
         white-space: nowrap;
     }
 
+    .media-track-station {
+        font-size: 22rpx;
+        color: var(--dark-page-text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .media-track-source {
         font-size: 18rpx;
         color: var(--color-primary);
@@ -1334,6 +1417,34 @@
         display: flex;
         align-items: center;
         gap: 12rpx;
+    }
+
+    .media-progress-row {
+        display: flex;
+        align-items: center;
+        gap: 12rpx;
+    }
+
+    .media-progress-time {
+        font-size: 18rpx;
+        color: var(--dark-page-text-hint);
+        flex-shrink: 0;
+        min-width: 56rpx;
+    }
+
+    .media-progress-track {
+        flex: 1;
+        height: 4rpx;
+        border-radius: 2rpx;
+        background: var(--dark-page-glass-border);
+        overflow: hidden;
+    }
+
+    .media-progress-fill {
+        height: 100%;
+        border-radius: 2rpx;
+        background: linear-gradient(90deg, var(--color-primary), #5BE7C4);
+        transition: width 0.5s ease;
     }
 
     .media-vol-btn {

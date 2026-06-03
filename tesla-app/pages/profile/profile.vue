@@ -65,6 +65,15 @@
             <text class="section-title-text">偏好设置</text>
           </view>
           <view class="menu-card">
+            <view class="menu-item" @click="showDashboardPicker">
+              <view class="menu-icon-wrap">
+                <Icon name="Speedometer" :size="22" themeColor="primary" />
+              </view>
+              <text class="menu-label">仪表盘风格</text>
+              <text class="menu-value">{{ dashboardLabel }}</text>
+              <Icon name="ChevronForward" :size="16" themeColor="chevron" />
+            </view>
+            <view class="menu-divider"></view>
             <view class="menu-item" @click="showThemePicker">
               <view class="menu-icon-wrap">
                 <Icon name="Settings" :size="22" themeColor="primary" />
@@ -120,9 +129,11 @@ import { getUserInfo } from '@/api/user.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
+import { useDashboardStore } from '@/store/dashboard'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const themeStore = useThemeStore()
+const dashboardStore = useDashboardStore()
 const themeClass = computed(() => themeStore.themeClass)
 
 const userInfo = ref({})
@@ -153,6 +164,25 @@ const themeModeLabel = computed(() => {
   if (mode === 'visionpro') return 'Vision Pro'
   return '跟随系统'
 })
+
+const dashboardLabel = computed(() => {
+  return dashboardStore.currentDashboard?.label || '经典仪表盘'
+})
+
+const showDashboardPicker = () => {
+  const list = dashboardStore.dashboardList.map(d => d.label + ' - ' + d.desc)
+  const currentIndex = dashboardStore.dashboardList.findIndex(d => d.key === dashboardStore.dashboardType)
+  uni.showActionSheet({
+    itemList: list,
+    success: (res) => {
+      const selected = dashboardStore.dashboardList[res.tapIndex]
+      if (selected) {
+        dashboardStore.setDashboardType(selected.key)
+        uni.showToast({ title: '已切换为' + selected.label, icon: 'success' })
+      }
+    }
+  })
+}
 
 const showThemePicker = () => {
   uni.showActionSheet({

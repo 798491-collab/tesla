@@ -177,6 +177,18 @@ func BroadcastVehicleState(vin string, data interface{}) {
 	}
 }
 
+func BroadcastRealtimeUpdate(vin string, data interface{}) {
+	if DefaultHub != nil {
+		DefaultHub.BroadcastToVIN(vin, "realtime_update", data)
+	}
+}
+
+func BroadcastStateUpdate(vin string, data interface{}) {
+	if DefaultHub != nil {
+		DefaultHub.BroadcastToVIN(vin, "state_update", data)
+	}
+}
+
 func BroadcastOnlineState(vin string, onlineState string, online bool) {
 	if DefaultHub != nil {
 		msgData := map[string]interface{}{

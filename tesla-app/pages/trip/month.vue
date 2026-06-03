@@ -37,7 +37,7 @@
       </view>
       <view class="ai-card-body">
         <view class="ai-spinner"></view>
-        <text class="ai-loading-text">AI 正在分析中...</text>
+        <text class="ai-loading-text">分析生成中...</text>
       </view>
     </view>
 
@@ -99,18 +99,20 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getTripLogs } from '@/api/trip.js'
-import { getTripAnalysis, triggerTripAnalysis } from '@/api/ai.js'
+import { getTripAnalysis } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
+import { useVehicleData } from '@/utils/vehicle-data.js'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
 const primaryColor = computed(() => themeStore.colors.primary)
 const hintColor = computed(() => themeStore.colors.hint)
+const vehicleStore = useVehicleData()
 
 const logs = ref([])
 const month = ref('')
@@ -181,19 +183,22 @@ const loadAIAnalysis = async () => {
     const res = await getTripAnalysis(vin.value, refId)
     if (res?.data) {
       aiResult.value = res.data
+      aiLoading.value = false
     } else {
       aiLoading.value = true
-      await triggerTripAnalysis(vin.value, refId)
-      setTimeout(async () => {
-        const res2 = await getTripAnalysis(vin.value, refId)
-        if (res2?.data) aiResult.value = res2.data
-        aiLoading.value = false
-      }, 15000)
     }
   } catch (e) {
     aiLoading.value = false
   }
 }
+
+watch(() => vehicleStore.analysisNotification, (notification) => {
+  if (!notification) return
+  const refId = `trip_monthly:${month.value}`
+  if (notification.type === 'analysis_complete' && notification.refId === refId) {
+    loadAIAnalysis()
+  }
+})
 
 const formatAITime = (t) => {
   if (!t) return ''

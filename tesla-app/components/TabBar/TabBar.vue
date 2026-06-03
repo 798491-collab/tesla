@@ -40,7 +40,7 @@
 		return '#7C879B'
 	})
 
-	const tabList = [{
+	const tabList = computed(() => [{
 			text: '首页',
 			icon: 'Home',
 			pagePath: '/pages/dashboard/dashboard'
@@ -60,7 +60,7 @@
 			icon: 'Person',
 			pagePath: '/pages/profile/profile'
 		}
-	]
+	])
 
 	const switchTab = (index, pagePath) => {
 		if (index === props.currentIndex) return

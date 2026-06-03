@@ -142,6 +142,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, onActivated } from 'vue'
+import { onShow, onHide } from '@dcloudio/uni-app'
 import { getVehicleState } from '@/api/vehicle.js'
 import { useVehicleStore } from '@/store/vehicle'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
@@ -182,6 +183,8 @@ watch(() => vehicleWSData.value, (wsData) => {
   const latitude = wsData.latitude
   const longitude = wsData.longitude
   const currentState = state.value
+
+  // 位置有效时更新位置相关数据
   if (latitude && longitude && latitude !== 0 && longitude !== 0) {
     locationAuthorized.value = true
     state.value = {
@@ -189,6 +192,20 @@ watch(() => vehicleWSData.value, (wsData) => {
       latitude,
       longitude,
       heading: wsData.heading ?? currentState.heading,
+      speed: wsData.speed ?? currentState.speed,
+      gear: wsData.gear ?? currentState.gear,
+      driving: wsData.driving ?? currentState.driving,
+      charging: wsData.charging ?? currentState.charging,
+      soc: wsData.soc ?? currentState.soc,
+      range_km: wsData.range_km ?? currentState.range_km,
+      online: isVehicleOnline(vehicleWSStateOutput.value),
+      state: vehicleWSStateOutput.value?.state?.online_state || currentState.state,
+      updated_at: new Date().toISOString()
+    }
+  } else {
+    // 位置无效时仍更新非位置数据
+    state.value = {
+      ...currentState,
       speed: wsData.speed ?? currentState.speed,
       gear: wsData.gear ?? currentState.gear,
       driving: wsData.driving ?? currentState.driving,
@@ -287,6 +304,20 @@ onUnmounted(() => {
   destroyVehicleData()
   if (refreshTimer) {
     clearInterval(refreshTimer)
+  }
+})
+
+onShow(() => {
+  if (vin.value) {
+    initVehicleData(vin.value)
+  }
+})
+
+onHide(() => {
+  destroyVehicleData()
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
   }
 })
 

@@ -18,10 +18,15 @@ type Config struct {
 }
 
 type TelemetryConfig struct {
-	Enabled    bool
-	ListenAddr string
-	Hostname   string
-	PrivateKey string
+	Enabled         bool
+	ListenAddr      string
+	Hostname        string
+	PrivateKey      string
+	PublicKeyFile   string
+	TLSCertFile     string
+	TLSKeyFile      string
+	CACertFile      string
+	UseDefaultEngCA bool
 }
 
 type AIConfig struct {
@@ -130,10 +135,15 @@ func Load() *Config {
 			BaseURL: getEnv("AI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
 		},
 		Telemetry: TelemetryConfig{
-			Enabled:    getEnvAsBool("TELEMETRY_ENABLED", false),
-			ListenAddr: getEnv("TELEMETRY_LISTEN_ADDR", ":4443"),
-			Hostname:   getEnv("TELEMETRY_HOSTNAME", ""),
-			PrivateKey: getEnv("TELEMETRY_PRIVATE_KEY", ""),
+			Enabled:         getEnvAsBool("TELEMETRY_ENABLED", false),
+			ListenAddr:      getEnv("TELEMETRY_LISTEN_ADDR", ":8443"),
+			Hostname:        getEnv("TELEMETRY_HOSTNAME", ""),
+			PrivateKey:      getEnv("TELEMETRY_PRIVATE_KEY", ""),
+			PublicKeyFile:   getEnv("TELEMETRY_PUBLIC_KEY", ""),
+			TLSCertFile:     getEnv("TELEMETRY_TLS_CERT", ""),
+			TLSKeyFile:      getEnv("TELEMETRY_TLS_KEY", ""),
+			CACertFile:      getEnv("TELEMETRY_CA_CERT", ""),
+			UseDefaultEngCA: getEnvAsBool("TELEMETRY_USE_ENG_CA", false),
 		},
 	}
 }

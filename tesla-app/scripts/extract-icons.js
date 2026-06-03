@@ -69,6 +69,8 @@ const iconMapping = {
   'Map': 'Map',
   'Eye': 'Eye',
   'EyeOff': 'EyeOff',
+  'Radio': 'Radio',
+  'MusicNote': 'MusicalNote',
 };
 
 function extractSvgContent(filePath) {

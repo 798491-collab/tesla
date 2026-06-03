@@ -29,6 +29,13 @@
       }
     },
     {
+      "path": "pages/dashboard/cockpit",
+      "style": {
+        "navigationBarTitleText": "驾驶舱仪表盘",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/login/login",
       "style": {
         "navigationBarTitleText": "登录",
