@@ -55,7 +55,37 @@ func Exists(key string) (bool, error) {
 
 func SetVehicleState(vin string, state interface{}) error {
 	key := fmt.Sprintf("tesla:vehicle:%s:state", vin)
-	return Set(key, state, 0)
+
+	// 将新数据序列化为 map
+	newData, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	var newMap map[string]interface{}
+	if err := json.Unmarshal(newData, &newMap); err != nil {
+		return err
+	}
+
+	// 读取已有数据
+	var existing map[string]interface{}
+	val, err := Client.Get(ctx, key).Result()
+	if err == nil {
+		json.Unmarshal([]byte(val), &existing)
+	}
+	if existing == nil {
+		existing = make(map[string]interface{})
+	}
+
+	// 增量合并：新值覆盖旧值，保留旧值中存在但新值中不存在的字段
+	for k, v := range newMap {
+		existing[k] = v
+	}
+
+	merged, err := json.Marshal(existing)
+	if err != nil {
+		return err
+	}
+	return Client.Set(ctx, key, merged, 0).Err()
 }
 
 func GetVehicleState(vin string, dest interface{}) error {
@@ -203,7 +233,7 @@ func GetPollingState(vin string, dest interface{}) error {
 // DeletePollingState 删除轮询状态
 func SetVehicleRealtime(vin string, data interface{}) error {
 	key := fmt.Sprintf("tesla:vehicle:%s:realtime", vin)
-	return Set(key, data, 30*time.Second)
+	return Set(key, data, 0) // 永不过期，保留最后已知实时数据
 }
 
 func GetVehicleRealtime(vin string, dest interface{}) error {
