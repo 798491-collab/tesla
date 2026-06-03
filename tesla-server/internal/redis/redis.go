@@ -95,7 +95,7 @@ func UpdateVehicleStateFields(vin string, fields map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	return Client.Set(ctx, key, data, 30*time.Minute).Err()
+	return Client.Set(ctx, key, data, 0).Err() // state 键永不过期，保留最后已知状态
 }
 
 func SetVehicleOnline(vin string, online bool) error {
