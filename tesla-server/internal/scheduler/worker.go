@@ -135,19 +135,30 @@ func (w *VehicleWorker) tryTransitionToSleeping(reason string) {
 		log.Printf("[Worker] %s: would downgrade to sleeping (%s) but in online lock, deferring", w.VIN, reason)
 		return
 	}
-	log.Printf("[Worker] %s: downgrading to sleeping (%s)", w.VIN, reason)
+
+	// 根据降级原因判断车辆是睡眠还是离线
+	onlineState := "asleep"
+	if reason == "vehicle_data offline confirmed" || reason == "consecutive failures" {
+		onlineState = "offline"
+	}
+
+	log.Printf("[Worker] %s: downgrading to %s (%s)", w.VIN, onlineState, reason)
 	w.transitionTo(pollSleeping)
 
-	stateOutput := vstate.UpdateFromLightweight(w.VIN, "asleep", false, "sleep_transition")
+	stateOutput := vstate.UpdateFromLightweight(w.VIN, onlineState, false, "sleep_transition")
 	redis.UpdateVehicleStateFields(w.VIN, map[string]interface{}{
-		"state":        "asleep",
+		"state":        onlineState,
 		"online":       false,
 		"state_output": stateOutput,
 	})
 	redis.SetVehicleOnline(w.VIN, false)
 	database.DB.Model(&models.TeslaVehicle{}).
 		Where("vin = ?", w.VIN).
-		Update("online_state", "asleep")
+		Update("online_state", onlineState)
+	ws.DefaultHub.BroadcastToVIN(w.VIN, "online_state", map[string]interface{}{
+		"state":  onlineState,
+		"online": false,
+	})
 }
 
 func (w *VehicleWorker) Run(ctx context.Context) {

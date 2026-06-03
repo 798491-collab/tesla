@@ -201,6 +201,19 @@ func handleTelemetryWS(vin string, conn *websocket.Conn) {
 		delete(activeConns, vin)
 		activeConnsMu.Unlock()
 		log.Printf("[Telemetry] WebSocket disconnected for VIN: %s", vin)
+
+		// 通知前端遥测断开，车辆可能已睡眠
+		redis.SetVehicleStatus(vin, &redis.VehicleStatus{
+			Online: false,
+			Source: "telemetry",
+		})
+		redis.UpdateVehicleStateFields(vin, map[string]interface{}{
+			"online": false,
+		})
+		ws.DefaultHub.BroadcastToVIN(vin, "online_state", map[string]interface{}{
+			"state":  "asleep",
+			"online": false,
+		})
 	}()
 
 	log.Printf("[Telemetry] WebSocket connection established for VIN: %s", vin)
