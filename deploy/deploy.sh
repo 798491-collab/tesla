@@ -288,6 +288,14 @@ JWT_EXPIRES_IN=86400
 
 TENCENT_MAP_KEY=$TENCENT_MAP_KEY
 
+# Fleet Telemetry 配置（车辆主动推送数据）
+TELEMETRY_ENABLED=true
+TELEMETRY_HOSTNAME=$DOMAIN
+TELEMETRY_LISTEN_ADDR=:8443
+TELEMETRY_PRIVATE_KEY=$VCP_KEYS_DIR/private.pem
+TELEMETRY_TLS_CERT=$VCP_KEYS_DIR/tls-cert.pem
+TELEMETRY_TLS_KEY=$VCP_KEYS_DIR/tls-key.pem
+
 AI_API_KEY=
 AI_MODEL=glm-4-flash
 AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
@@ -295,6 +303,9 @@ EOF
 
     chmod 600 "$SERVER_DIR/.env"
     print_ok ".env 配置文件已生成"
+
+    print_info "遥测服务器将监听 8443 端口（mTLS），请确保防火墙已开放该端口"
+    print_info "开放端口: ufw allow 8443/tcp 或 firewall-cmd --add-port=8443/tcp --permanent"
 }
 
 init_database() {
@@ -699,6 +710,57 @@ register_partner() {
     fi
 }
 
+configure_telemetry() {
+    print_step "配置车辆遥测"
+
+    if ! systemctl is-active --quiet tesla-server; then
+        print_err "tesla-server 未运行，无法配置遥测"
+        return
+    fi
+
+    echo ""
+    echo -e "${CYAN}车辆遥测配置说明:${NC}"
+    echo "  遥测功能让车辆主动推送数据到服务器，无需轮询，更高效实时。"
+    echo "  配置后，车辆会通过 WebSocket 推送速度、电量、位置等实时数据。"
+    echo ""
+
+    read -p "是否现在配置车辆遥测？[Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        print_info "稍后可通过前端「车辆管理」页面配置遥测"
+        return
+    fi
+
+    echo ""
+    read -p "请输入车辆 VIN（LRW开头）: " vin
+    if [[ -z "$vin" ]]; then
+        print_err "VIN 不能为空"
+        return
+    fi
+
+    read -p "请输入用户 Token（从浏览器开发者工具获取）: " token
+    if [[ -z "$token" ]]; then
+        print_err "Token 不能为空"
+        print_info "获取方式: 登录前端后，打开浏览器开发者工具 → Application → Local Storage → 找到 token"
+        return
+    fi
+
+    print_info "正在配置遥测..."
+    local result=$(curl -s -X POST "http://localhost:$SERVER_PORT/api/tesla/vehicle/$vin/configure-telemetry" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json")
+
+    echo "  返回: $result"
+
+    if echo "$result" | grep -q '"code":200'; then
+        print_ok "遥测配置成功！车辆将主动推送数据到服务器"
+        print_info "查看遥测日志: journalctl -u tesla-server -f | grep Telemetry"
+    else
+        print_warn "遥测配置失败，请检查 VIN 和 Token 是否正确"
+        print_info "手动配置: curl -X POST 'http://localhost:$SERVER_PORT/api/tesla/vehicle/$vin/configure-telemetry' -H 'Authorization: Bearer {token}'"
+    fi
+}
+
 print_summary() {
     print_step "部署完成 - 状态检查"
 
@@ -717,6 +779,13 @@ print_summary() {
         echo -e "  ${GREEN}✓${NC} 后端服务      运行中 (端口 $SERVER_PORT)"
     else
         echo -e "  ${RED}✗${NC} 后端服务      未运行"
+    fi
+
+    # 检查遥测端口
+    if ss -tlnp 2>/dev/null | grep -q ":8443" || netstat -tlnp 2>/dev/null | grep -q ":8443"; then
+        echo -e "  ${GREEN}✓${NC} 遥测服务      运行中 (端口 8443)"
+    else
+        echo -e "  ${YELLOW}○${NC} 遥测服务      未监听 (需配置后启动)"
     fi
 
     if systemctl is-active --quiet nginx; then
@@ -746,15 +815,20 @@ print_summary() {
     echo ""
     echo -e "${YELLOW}后续步骤:${NC}"
     echo "  1. 确保 SSL 证书已配置（Tesla 要求 HTTPS）"
-    echo "  2. 注册 Partner Account（如未注册）:"
+    echo "  2. 确保防火墙开放 8443 端口（遥测服务）:"
+    echo "     ufw allow 8443/tcp"
+    echo "  3. 注册 Partner Account（如未注册）:"
     echo "     curl -s -X POST 'http://localhost:$SERVER_PORT/api/tesla/partner/register?domain=$DOMAIN'"
-    echo "  3. 验证公钥可访问:"
+    echo "  4. 验证公钥可访问:"
     echo "     curl -s 'https://$DOMAIN/.well-known/appspecific/com.tesla.3p.public-key.pem' | head -1"
-    echo "  4. 在手机浏览器打开配对链接（Safari/Chrome）:"
+    echo "  5. 在手机浏览器打开配对链接（Safari/Chrome）:"
     echo "     https://tesla.cn/_ak/$DOMAIN?vin=你的VIN"
+    echo "  6. 配置车辆遥测（配对成功后）:"
+    echo "     前端「车辆管理」→ 点击「配置遥测」"
     echo ""
     echo -e "${YELLOW}常用命令:${NC}"
     echo "  查看后端日志:  journalctl -u tesla-server -f"
+    echo "  查看遥测日志:  journalctl -u tesla-server -f | grep Telemetry"
     echo "  查看VCP日志:   journalctl -u tesla-http-proxy -f"
     echo "  重启后端:      systemctl restart tesla-server"
     echo "  重启VCP:       systemctl restart tesla-http-proxy"
@@ -777,6 +851,7 @@ main() {
         deploy_frontend
         configure_nginx
         register_partner
+        configure_telemetry
     else
         if [[ "$DEPLOY_VCP" == true ]]; then
             ask_domain

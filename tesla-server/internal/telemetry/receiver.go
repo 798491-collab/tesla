@@ -1079,6 +1079,8 @@ func handleJSONTelemetry(vin string, body []byte) {
 }
 
 func processProtobufTelemetry(vin string, payload *protos.Payload) {
+	log.Printf("[Telemetry] Received protobuf payload for %s: %d data points", vin, len(payload.Data))
+
 	realtime := &fleet.RealtimeData{
 		UpdatedAt: time.Now().UnixMilli(),
 	}
@@ -1093,6 +1095,7 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 
 	for _, datum := range payload.Data {
 		if datum.Value == nil || datum.Value.GetInvalid() {
+			log.Printf("[Telemetry] [DEBUG] %s: field %d is invalid or nil", vin, datum.Key)
 			continue
 		}
 
@@ -1100,6 +1103,7 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 		case protos.Field_VehicleSpeed:
 			realtime.Speed = getFloat64Value(datum.Value)
 			hasRealtime = true
+			log.Printf("[Telemetry] [DEBUG] %s: VehicleSpeed = %.1f km/h", vin, realtime.Speed)
 		case protos.Field_Gear:
 			switch datum.Value.GetShiftStateValue() {
 			case protos.ShiftState_ShiftStateP:
@@ -1112,6 +1116,7 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 				realtime.Gear = "D"
 			}
 			hasRealtime = true
+			log.Printf("[Telemetry] [DEBUG] %s: Gear = %s", vin, realtime.Gear)
 		case protos.Field_PedalPosition:
 			realtime.PedalPosition = getFloat64Value(datum.Value)
 			hasRealtime = true
@@ -1132,6 +1137,7 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 				realtime.Latitude = lat
 				realtime.Longitude = lng
 				hasRealtime = true
+				log.Printf("[Telemetry] [DEBUG] %s: Location = (%.6f, %.6f) [GCJ-02]", vin, lat, lng)
 			}
 		case protos.Field_GpsHeading:
 			realtime.Heading = getIntValue(datum.Value)
@@ -1142,9 +1148,11 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 		case protos.Field_Soc:
 			realtime.Soc = getFloat64Value(datum.Value)
 			hasRealtime = true
+			log.Printf("[Telemetry] [DEBUG] %s: Soc = %.1f%%", vin, realtime.Soc)
 		case protos.Field_BatteryLevel:
 			realtime.BatteryLevel = getFloat64Value(datum.Value)
 			hasRealtime = true
+			log.Printf("[Telemetry] [DEBUG] %s: BatteryLevel = %.1f%%", vin, realtime.BatteryLevel)
 		case protos.Field_DCChargingPower:
 			realtime.DCChargingPower = getFloat64Value(datum.Value)
 			hasRealtime = true
@@ -1179,6 +1187,7 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 		case protos.Field_Locked:
 			stateFields["locked"] = datum.Value.GetBooleanValue()
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: Locked = %v", vin, stateFields["locked"])
 		case protos.Field_DoorState:
 			doors := datum.Value.GetDoorValue()
 			if doors != nil {
@@ -1203,11 +1212,13 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 				stateFields["frunk_open"] = doors.GetTrunkFront()
 				stateFields["door_open"] = doorOpen
 				hasState = true
+				log.Printf("[Telemetry] [DEBUG] %s: DoorState = FL:%v FR:%v RL:%v RR:%v", vin, doors.GetDriverFront(), doors.GetPassengerFront(), doors.GetDriverRear(), doors.GetPassengerRear())
 			}
 		case protos.Field_SentryMode:
 			sentryState := datum.Value.GetSentryModeStateValue()
 			stateFields["sentry_mode"] = sentryState != protos.SentryModeState_SentryModeStateOff && sentryState != protos.SentryModeState_SentryModeStateUnknown
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: SentryMode = %v", vin, stateFields["sentry_mode"])
 		case protos.Field_InsideTemp:
 			stateFields["inside_temp"] = getFloat64Value(datum.Value)
 			hasState = true
@@ -1227,19 +1238,24 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 		case protos.Field_TpmsPressureFl:
 			stateFields["tpms_fl"] = getFloat64Value(datum.Value)
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureFl = %.2f bar", vin, stateFields["tpms_fl"])
 		case protos.Field_TpmsPressureFr:
 			stateFields["tpms_fr"] = getFloat64Value(datum.Value)
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureFr = %.2f bar", vin, stateFields["tpms_fr"])
 		case protos.Field_TpmsPressureRl:
 			stateFields["tpms_rl"] = getFloat64Value(datum.Value)
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureRl = %.2f bar", vin, stateFields["tpms_rl"])
 		case protos.Field_TpmsPressureRr:
 			stateFields["tpms_rr"] = getFloat64Value(datum.Value)
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureRr = %.2f bar", vin, stateFields["tpms_rr"])
 
 		case protos.Field_Odometer:
 			stateFields["odometer_km"] = getFloat64Value(datum.Value) * 1.60934
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: Odometer = %.1f km", vin, stateFields["odometer_km"])
 		case protos.Field_CenterDisplay:
 			stateFields["center_display_state"] = getIntValue(datum.Value)
 			hasState = true
@@ -1533,7 +1549,21 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 				stateFields[snake] = fmt.Sprintf("%v", datum.Value)
 			}
 			hasState = true
+			log.Printf("[Telemetry] [DEBUG] %s: %s = %v (default case)", vin, snake, stateFields[snake])
 		}
+	}
+
+	// 详细日志：记录所有收到的遥测数据
+	if hasRealtime {
+		log.Printf("[Telemetry] [REALTIME] %s: speed=%.1f km/h, gear=%s, power=%.1f kW, soc=%.1f%%, lat=%.6f, lng=%.6f, heading=%d, cruise_set_speed=%.1f",
+			vin, realtime.Speed, realtime.Gear, realtime.Power, realtime.Soc, realtime.Latitude, realtime.Longitude, realtime.Heading, realtime.CruiseSetSpeed)
+	}
+	if hasState {
+		log.Printf("[Telemetry] [STATE] %s: %d fields - %v", vin, len(stateFields), stateFields)
+	}
+	if hasMedia {
+		log.Printf("[Telemetry] [MEDIA] %s: status=%s, title=%s, artist=%s, volume=%d",
+			vin, media.PlaybackStatus, media.NowPlayingTitle, media.NowPlayingArtist, media.Volume)
 	}
 
 	if hasRealtime {
