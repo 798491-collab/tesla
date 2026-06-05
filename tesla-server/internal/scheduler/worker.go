@@ -130,6 +130,25 @@ func (w *VehicleWorker) canDowngrade() bool {
 	return !w.isInOnlineLock()
 }
 
+// canUpdateToState 检查是否可以将状态更新为指定值
+// 防止在 waking 确认期间或 online lock 期间被错误覆盖为 asleep/offline
+func (w *VehicleWorker) canUpdateToState(newState string) bool {
+	// 如果新状态是 asleep 或 offline，需要检查是否允许降级
+	if newState == "asleep" || newState == "offline" {
+		// 如果在 waking 确认期间，不允许降级
+		if w.state == pollWaking {
+			log.Printf("[Worker] %s: blocking state update to '%s' during waking confirmation", w.VIN, newState)
+			return false
+		}
+		// 如果在 online lock 期间，不允许降级
+		if w.isInOnlineLock() {
+			log.Printf("[Worker] %s: blocking state update to '%s' during online lock", w.VIN, newState)
+			return false
+		}
+	}
+	return true
+}
+
 func (w *VehicleWorker) tryTransitionToSleeping(reason string) {
 	if !w.canDowngrade() {
 		log.Printf("[Worker] %s: would downgrade to sleeping (%s) but in online lock, deferring", w.VIN, reason)
@@ -341,9 +360,12 @@ func (w *VehicleWorker) pollFullData() {
 	newState := w.derivePollStateSafe(data)
 	w.transitionTo(newState)
 
-	database.DB.Model(&models.TeslaVehicle{}).
-		Where("vin = ?", w.VIN).
-		Update("online_state", data.State)
+	// 只有在允许的情况下才更新数据库状态
+	if w.canUpdateToState(data.State) {
+		database.DB.Model(&models.TeslaVehicle{}).
+			Where("vin = ?", w.VIN).
+			Update("online_state", data.State)
+	}
 }
 
 func (w *VehicleWorker) pollWakingConfirm() {
@@ -410,9 +432,12 @@ func (w *VehicleWorker) pollWakingConfirm() {
 	charging.ProcessChargingState(w.VIN, data)
 	saveVehicleState(w.VIN, data)
 
-	database.DB.Model(&models.TeslaVehicle{}).
-		Where("vin = ?", w.VIN).
-		Update("online_state", data.State)
+	// 只有在允许的情况下才更新数据库状态
+	if w.canUpdateToState(data.State) {
+		database.DB.Model(&models.TeslaVehicle{}).
+			Where("vin = ?", w.VIN).
+			Update("online_state", data.State)
+	}
 
 	if w.wakingSuccessCount >= wakingSuccessRequired {
 		log.Printf("[Worker] %s: waking STABLE confirmed (%d consecutive successes), entering online with %v lock", w.VIN, w.wakingSuccessCount, onlineLockDuration)
