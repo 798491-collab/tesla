@@ -73,16 +73,17 @@ type GUISettings struct {
 // VehicleState 车辆状态（包含胎压，注意：胎压字段在 vehicle_state 下）
 type VehicleState struct {
 	Odometer           float64 `json:"odometer"`
-	DoorFL             bool    `json:"door_fl"`
-	DoorFR             bool    `json:"door_fr"`
-	DoorRL             bool    `json:"door_rl"`
-	DoorRR             bool    `json:"door_rr"`
-	TrunkOpen          bool    `json:"trunk_open"`
-	FrunkOpen          bool    `json:"frunk_open"`
-	WindowFL           bool    `json:"window_fl"`
-	WindowFR           bool    `json:"window_fr"`
-	WindowRL           bool    `json:"window_rl"`
-	WindowRR           bool    `json:"window_rr"`
+	DF                 int     `json:"df"`          // 左前门 (0:关, 1:开)
+	PF                 int     `json:"pf"`          // 右前门 (0:关, 1:开)
+	DR                 int     `json:"dr"`          // 左后门 (0:关, 1:开)
+	PR                 int     `json:"pr"`          // 右后门 (0:关, 1:开)
+	FT                 int     `json:"ft"`          // 前备箱 (0:关, 1或2:开/解锁)
+	RT                 int     `json:"rt"`          // 后备箱 (0:关, 1或2:开/解锁)
+	FdWindow           int     `json:"fd_window"`   // 左前窗 (0:关, >0:开)
+	FpWindow           int     `json:"fp_window"`   // 右前窗
+	RdWindow           int     `json:"rd_window"`   // 左后窗
+	RpWindow           int     `json:"rp_window"`   // 右后窗
+	IsWindowClosed     bool    `json:"is_window_closed"` // 快捷字段：只要窗户没关严就是 false
 	Locked             bool    `json:"locked"`
 	SentryMode         bool    `json:"sentry_mode"`
 	CarVersion         string  `json:"car_version"`
@@ -130,9 +131,11 @@ type DriveState struct {
 	BrakePedal        bool    `json:"brake_pedal"`
 	DriveRail         bool    `json:"drive_rail"`
 	AcceleratorPedalPos float64 `json:"accelerator_pedal_pos"`
-	ActiveRouteLatitude  float64 `json:"active_route_latitude"`
-	ActiveRouteLongitude float64 `json:"active_route_longitude"`
-	ActiveRouteName      string  `json:"active_route_name"`
+	ActiveRouteLatitude       float64 `json:"active_route_latitude"`
+	ActiveRouteLongitude      float64 `json:"active_route_longitude"`
+	ActiveRouteName           string  `json:"active_route_name"`
+	ActiveRouteMilesToArrival float64 `json:"active_route_miles_to_arrival"`
+	ActiveRouteMinutesToArrival float64 `json:"active_route_minutes_to_arrival"`
 	LightsHighBeams      bool    `json:"lights_high_beams"`
 	LightsTurnSignal     string  `json:"lights_turn_signal"`
 }
@@ -219,18 +222,21 @@ type MediaState struct {
 	RemoteControlEnabled bool `json:"remote_control_enabled"`
 }
 
-// MediaInfo 媒体信息（Fleet Telemetry media_info 类别）
-// REST API 的 vehicle_data 可能也支持 media_info 端点返回这些数据
+// MediaInfo 媒体信息（REST API vehicle_data 的 media_info 端点）
+// REST API 返回的字段名与遥测不同：now_playing_source vs MediaPlaybackSource
 type MediaInfo struct {
-	PlaybackStatus  string `json:"media_playback_status"`
-	AudioSource     string `json:"media_audio_source"`
-	Volume          int    `json:"media_volume"`
-	NowPlayingTitle  string `json:"now_playing_title"`
-	NowPlayingArtist string `json:"now_playing_artist"`
-	NowPlayingAlbum  string `json:"now_playing_album"`
-	NowPlayingDuration int  `json:"now_playing_duration"`
-	NowPlayingElapsed  int  `json:"now_playing_elapsed"`
-	NowPlayingStation  string `json:"now_playing_station"`
+	MediaPlaybackStatus string `json:"media_playback_status"`
+	NowPlayingSource    string `json:"now_playing_source"`     // REST API 用 now_playing_source
+	A2dpSourceName      string `json:"a2dp_source_name"`       // 蓝牙源名称
+	AudioVolume         int    `json:"audio_volume"`           // REST API 用 audio_volume
+	AudioVolumeIncrement int   `json:"audio_volume_increment"`
+	AudioVolumeMax      int    `json:"audio_volume_max"`
+	NowPlayingTitle     string `json:"now_playing_title"`
+	NowPlayingArtist    string `json:"now_playing_artist"`
+	NowPlayingAlbum     string `json:"now_playing_album"`
+	NowPlayingDuration  int    `json:"now_playing_duration"`
+	NowPlayingElapsed   int    `json:"now_playing_elapsed"`
+	NowPlayingStation   string `json:"now_playing_station"`
 }
 
 // VehicleData 完整车辆数据
@@ -278,6 +284,10 @@ type VehicleStateData struct {
 	TrunkOpen          bool    `json:"trunk_open"`
 	FrunkOpen          bool    `json:"frunk_open"`
 	WindowsOpen        bool    `json:"windows_open"`
+	FdWindow           bool    `json:"fd_window"`
+	FpWindow           bool    `json:"fp_window"`
+	RdWindow           bool    `json:"rd_window"`
+	RpWindow           bool    `json:"rp_window"`
 	SentryMode         bool    `json:"sentry_mode"`
 	ValetModeEnabled   bool    `json:"valet_mode_enabled"`
 	ServiceMode        bool    `json:"service_mode"`
@@ -300,6 +310,7 @@ type VehicleStateData struct {
 	HvacFanSpeed       int     `json:"hvac_fan_speed"`
 	ClimateKeeperMode  int     `json:"climate_keeper_mode"`
 	ChargePortDoorOpen bool    `json:"charge_port_door_open"`
+	ChargePortLatch    string  `json:"charge_port_latch"`
 	ChargeLimitSoc     int     `json:"charge_limit_soc"`
 	MinutesToFull      int     `json:"minutes_to_full"`
 	ChargingState      string  `json:"charging_state"`
@@ -341,16 +352,18 @@ type VehicleStateData struct {
 }
 
 type MediaStateData struct {
-	PlaybackStatus    string `json:"media_playback_status"`
-	AudioSource       string `json:"media_audio_source"`
-	Volume            int    `json:"media_volume"`
-	NowPlayingTitle   string `json:"now_playing_title"`
-	NowPlayingArtist  string `json:"now_playing_artist"`
-	NowPlayingAlbum   string `json:"now_playing_album"`
-	NowPlayingDuration int    `json:"now_playing_duration"`
-	NowPlayingElapsed  int    `json:"now_playing_elapsed"`
-	NowPlayingStation  string `json:"now_playing_station"`
-	UpdatedAt         int64  `json:"updated_at"`
+	PlaybackStatus       string `json:"media_playback_status"`
+	AudioSource          string `json:"media_audio_source"`
+	Volume               int    `json:"media_volume"`
+	AudioVolumeIncrement int    `json:"media_audio_volume_increment"`
+	AudioVolumeMax       int    `json:"media_audio_volume_max"`
+	NowPlayingTitle      string `json:"now_playing_title"`
+	NowPlayingArtist     string `json:"now_playing_artist"`
+	NowPlayingAlbum      string `json:"now_playing_album"`
+	NowPlayingDuration   int    `json:"now_playing_duration"`
+	NowPlayingElapsed    int    `json:"now_playing_elapsed"`
+	NowPlayingStation    string `json:"now_playing_station"`
+	UpdatedAt            int64  `json:"updated_at"`
 }
 
 func ExtractRealtimeFromSimple(data *SimpleVehicleData) *RealtimeData {
@@ -388,6 +401,10 @@ func ExtractStateFromSimple(data *SimpleVehicleData) *VehicleStateData {
 		TrunkOpen:          data.TrunkOpen,
 		FrunkOpen:          data.FrunkOpen,
 		WindowsOpen:        data.WindowsOpen,
+		FdWindow:           data.FdWindow,
+		FpWindow:           data.FpWindow,
+		RdWindow:           data.RdWindow,
+		RpWindow:           data.RpWindow,
 		SentryMode:         data.SentryMode,
 		ServiceMode:        data.ServiceMode,
 		InsideTemp:         data.InsideTemp,
@@ -408,7 +425,8 @@ func ExtractStateFromSimple(data *SimpleVehicleData) *VehicleStateData {
 		HvacAutoMode:       data.HvacAutoMode,
 		HvacFanSpeed:       data.HvacFanSpeed,
 		ClimateKeeperMode:  data.ClimateKeeperMode,
-		ChargePortDoorOpen: data.ChargePortOpen,
+		ChargePortDoorOpen: data.ChargePortDoorOpen,
+		ChargePortLatch:    data.ChargePortLatch,
 		ChargeLimitSoc:     data.ChargeLimitSoc,
 		MinutesToFull:      data.MinutesToFull,
 		ChargingState:      data.ChargingState,
@@ -448,16 +466,18 @@ func ExtractStateFromSimple(data *SimpleVehicleData) *VehicleStateData {
 
 func ExtractMediaFromSimple(data *SimpleVehicleData) *MediaStateData {
 	return &MediaStateData{
-		PlaybackStatus:     data.MediaPlaybackStatus,
-		AudioSource:        data.MediaAudioSource,
-		Volume:             data.MediaVolume,
-		NowPlayingTitle:    data.NowPlayingTitle,
-		NowPlayingArtist:   data.NowPlayingArtist,
-		NowPlayingAlbum:    data.NowPlayingAlbum,
-		NowPlayingDuration: data.NowPlayingDuration,
-		NowPlayingElapsed:  data.NowPlayingElapsed,
-		NowPlayingStation:  data.NowPlayingStation,
-		UpdatedAt:          time.Now().UnixMilli(),
+		PlaybackStatus:       data.MediaPlaybackStatus,
+		AudioSource:          data.MediaAudioSource,
+		Volume:               data.MediaVolume,
+		AudioVolumeIncrement: data.MediaAudioVolumeIncrement,
+		AudioVolumeMax:       data.MediaAudioVolumeMax,
+		NowPlayingTitle:      data.NowPlayingTitle,
+		NowPlayingArtist:     data.NowPlayingArtist,
+		NowPlayingAlbum:      data.NowPlayingAlbum,
+		NowPlayingDuration:   data.NowPlayingDuration,
+		NowPlayingElapsed:    data.NowPlayingElapsed,
+		NowPlayingStation:    data.NowPlayingStation,
+		UpdatedAt:            time.Now().UnixMilli(),
 	}
 }
 
@@ -498,15 +518,16 @@ type SimpleVehicleData struct {
 	DoorOpen       bool    `json:"door_open"`
 	TrunkOpen      bool    `json:"trunk_open"`
 	FrunkOpen      bool    `json:"frunk_open"`
-	ChargePortOpen bool    `json:"charge_port_open"`
+	ChargePortDoorOpen bool    `json:"charge_port_door_open"`
+	ChargePortLatch    string  `json:"charge_port_latch"`
 	DoorFL bool `json:"door_fl"`
 	DoorFR bool `json:"door_fr"`
 	DoorRL bool `json:"door_rl"`
 	DoorRR bool `json:"door_rr"`
-	WindowFL bool `json:"window_fl"`
-	WindowFR bool `json:"window_fr"`
-	WindowRL bool `json:"window_rl"`
-	WindowRR bool `json:"window_rr"`
+	FdWindow bool `json:"fd_window"`
+	FpWindow bool `json:"fp_window"`
+	RdWindow bool `json:"rd_window"`
+	RpWindow bool `json:"rp_window"`
 	InsideTemp  float64 `json:"inside_temp"`
 	OutsideTemp float64 `json:"outside_temp"`
 	DriverTempSetting    float64 `json:"driver_temp_setting"`
@@ -521,10 +542,12 @@ type SimpleVehicleData struct {
 	BatteryTemp    float64 `json:"battery_temp"`
 	ChargerPhases  int     `json:"charger_phases"`
 	Lightweight    bool    `json:"lightweight"`
-	MediaPlaybackStatus string `json:"media_playback_status"`
-	MediaAudioSource    string `json:"media_audio_source"`
-	MediaVolume         int    `json:"media_volume"`
-	NowPlayingTitle     string `json:"now_playing_title"`
+	MediaPlaybackStatus     string `json:"media_playback_status"`
+	MediaAudioSource        string `json:"media_audio_source"`
+	MediaVolume             int    `json:"media_volume"`
+	MediaAudioVolumeIncrement int  `json:"media_audio_volume_increment"`
+	MediaAudioVolumeMax     int    `json:"media_audio_volume_max"`
+	NowPlayingTitle         string `json:"now_playing_title"`
 	NowPlayingArtist    string `json:"now_playing_artist"`
 	NowPlayingAlbum     string `json:"now_playing_album"`
 	NowPlayingStation   string `json:"now_playing_station"`
@@ -557,9 +580,11 @@ type SimpleVehicleData struct {
 	PedalPosition       float64 `json:"pedal_position"`
 	GuestModeEnabled    bool    `json:"guest_mode_enabled"`
 	ServiceMode         bool    `json:"service_mode"`
-	DestinationLatitude  float64 `json:"destination_latitude"`
-	DestinationLongitude float64 `json:"destination_longitude"`
-	DestinationName      string  `json:"destination_name"`
+	DestinationLatitude      float64 `json:"destination_latitude"`
+	DestinationLongitude     float64 `json:"destination_longitude"`
+	DestinationName          string  `json:"destination_name"`
+	MilesToArrival           float64 `json:"miles_to_arrival"`
+	MinutesToArrival         float64 `json:"minutes_to_arrival"`
 }
 
 // VirtualKeyStatus 虚拟钥匙状态
@@ -675,7 +700,7 @@ func getVehicleDataWithRetry(accessToken, vehicleTag string, retryCount int) (*V
 			log.Printf("[Fleet API] media_info received: title=%q artist=%q source=%q",
 				data.Response.MediaInfo.NowPlayingTitle,
 				data.Response.MediaInfo.NowPlayingArtist,
-				data.Response.MediaInfo.AudioSource)
+				data.Response.MediaInfo.NowPlayingSource)
 		}
 
 		return &data, nil
@@ -918,19 +943,24 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		Locked:      data.Response.VehicleState.Locked,
 		SentryMode:  data.Response.VehicleState.SentryMode,
 		MirrorFolded:   data.Response.VehicleState.MirrorFolded,
-		WindowsOpen: data.Response.VehicleState.WindowFL || data.Response.VehicleState.WindowFR || data.Response.VehicleState.WindowRL || data.Response.VehicleState.WindowRR,
-		DoorOpen:    data.Response.VehicleState.DoorFL || data.Response.VehicleState.DoorFR || data.Response.VehicleState.DoorRL || data.Response.VehicleState.DoorRR,
-		TrunkOpen:   data.Response.VehicleState.TrunkOpen,
-		FrunkOpen:   data.Response.VehicleState.FrunkOpen,
-		ChargePortOpen: data.Response.ChargeState.ChargePortOpen,
-		DoorFL: data.Response.VehicleState.DoorFL,
-		DoorFR: data.Response.VehicleState.DoorFR,
-		DoorRL: data.Response.VehicleState.DoorRL,
-		DoorRR: data.Response.VehicleState.DoorRR,
-		WindowFL: data.Response.VehicleState.WindowFL,
-		WindowFR: data.Response.VehicleState.WindowFR,
-		WindowRL: data.Response.VehicleState.WindowRL,
-		WindowRR: data.Response.VehicleState.WindowRR,
+		// REST API 返回 int 类型：df/pf/dr/pr (0:关, 1:开), ft/rt (0:关, 1或2:开/解锁)
+		// 用 >0 判断，避免尾门运动中(值为2)被误判为关闭
+		DoorFL: data.Response.VehicleState.DF > 0,
+		DoorFR: data.Response.VehicleState.PF > 0,
+		DoorRL: data.Response.VehicleState.DR > 0,
+		DoorRR: data.Response.VehicleState.PR > 0,
+		DoorOpen:    data.Response.VehicleState.DF > 0 || data.Response.VehicleState.PF > 0 || data.Response.VehicleState.DR > 0 || data.Response.VehicleState.PR > 0,
+		TrunkOpen:   data.Response.VehicleState.RT > 0,
+		FrunkOpen:   data.Response.VehicleState.FT > 0,
+		// REST API 返回 int 类型：fd_window/fp_window/rd_window/rp_window (0:关, >0:开)
+		// 数值代表电机位移，只要不等于0就视为未关严
+		FdWindow: data.Response.VehicleState.FdWindow > 0,
+		FpWindow: data.Response.VehicleState.FpWindow > 0,
+		RdWindow: data.Response.VehicleState.RdWindow > 0,
+		RpWindow: data.Response.VehicleState.RpWindow > 0,
+		WindowsOpen: data.Response.VehicleState.FdWindow > 0 || data.Response.VehicleState.FpWindow > 0 || data.Response.VehicleState.RdWindow > 0 || data.Response.VehicleState.RpWindow > 0,
+		ChargePortDoorOpen: data.Response.ChargeState.ChargePortOpen,
+		ChargePortLatch:    data.Response.ChargeState.ChargePortLatch,
 		InsideTemp:           data.Response.ClimateState.InsideTemp,
 		OutsideTemp:          data.Response.ClimateState.OutsideTemp,
 		DriverTempSetting:    data.Response.ClimateState.DriverTempSetting,
@@ -970,18 +1000,22 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		PedalPosition:      data.Response.DriveState.AcceleratorPedalPos,
 		GuestModeEnabled:   data.Response.VehicleState.GuestModeEnabled,
 		ServiceMode:        data.Response.VehicleState.ServiceMode,
-		DestinationLatitude:  data.Response.DriveState.ActiveRouteLatitude,
-		DestinationLongitude: data.Response.DriveState.ActiveRouteLongitude,
-		DestinationName:      data.Response.DriveState.ActiveRouteName,
-		MediaPlaybackStatus: data.Response.MediaInfo.PlaybackStatus,
-		MediaAudioSource:    data.Response.MediaInfo.AudioSource,
-		MediaVolume:         data.Response.MediaInfo.Volume,
-		NowPlayingTitle:     data.Response.MediaInfo.NowPlayingTitle,
-		NowPlayingArtist:    data.Response.MediaInfo.NowPlayingArtist,
-		NowPlayingAlbum:     data.Response.MediaInfo.NowPlayingAlbum,
-		NowPlayingStation:   data.Response.MediaInfo.NowPlayingStation,
-		NowPlayingDuration:  data.Response.MediaInfo.NowPlayingDuration,
-		NowPlayingElapsed:   data.Response.MediaInfo.NowPlayingElapsed,
+		DestinationLatitude:      data.Response.DriveState.ActiveRouteLatitude,
+		DestinationLongitude:     data.Response.DriveState.ActiveRouteLongitude,
+		DestinationName:          data.Response.DriveState.ActiveRouteName,
+		MilesToArrival:           data.Response.DriveState.ActiveRouteMilesToArrival,
+		MinutesToArrival:         data.Response.DriveState.ActiveRouteMinutesToArrival,
+		MediaPlaybackStatus:     data.Response.MediaInfo.MediaPlaybackStatus,
+		MediaAudioSource:        data.Response.MediaInfo.NowPlayingSource,
+		MediaVolume:             data.Response.MediaInfo.AudioVolume,
+		MediaAudioVolumeIncrement: data.Response.MediaInfo.AudioVolumeIncrement,
+		MediaAudioVolumeMax:     data.Response.MediaInfo.AudioVolumeMax,
+		NowPlayingTitle:         data.Response.MediaInfo.NowPlayingTitle,
+		NowPlayingArtist:        data.Response.MediaInfo.NowPlayingArtist,
+		NowPlayingAlbum:         data.Response.MediaInfo.NowPlayingAlbum,
+		NowPlayingStation:       data.Response.MediaInfo.NowPlayingStation,
+		NowPlayingDuration:      data.Response.MediaInfo.NowPlayingDuration,
+		NowPlayingElapsed:       data.Response.MediaInfo.NowPlayingElapsed,
 		CenterDisplayState:  data.Response.VehicleState.CenterDisplayState,
 	}, nil
 }

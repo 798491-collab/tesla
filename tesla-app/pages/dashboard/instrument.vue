@@ -2,7 +2,7 @@
   <view class="instrument-page" :class="themeClass">
     <view class="cluster-screen" v-if="currentVehicle">
       <!-- 实时地图背景 -->
-      <view class="map-bg-container map-dark-filter">
+      <view class="map-bg-container" :class="{ 'map-dark-filter': useMapFilter }">
         <map
           id="dashboardMap"
           class="map-bg"
@@ -18,7 +18,7 @@
           :enable-satellite="false"
           :enable-traffic="false"
           :disable-scroll="true"
-          :layer-style="mapLayerStyle"
+          :subkey="tencentMapKey"
           @updated="onMapUpdated"
         ></map>
         <view class="map-overlay" style="background:none"></view>
@@ -125,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, getCurrentInstance } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import Icon from '@/components/Icon/Icon.vue'
 import { useVehicleStore } from '@/store/vehicle'
@@ -169,18 +169,10 @@ const vehicleLat = computed(() => vehicleData.value?.latitude || 39.9042)
 const vehicleLng = computed(() => vehicleData.value?.longitude || 116.4074)
 const vehicleHeading = computed(() => vehicleData.value?.heading || 0)
 
-const mapLayerStyle = computed(() => {
-  const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
-  // #ifdef APP-PLUS
-  return parseInt(styleId) || 2
-  // #endif
-  // #ifdef H5
-  return 'style' + styleId
-  // #endif
-  // #ifndef APP-PLUS || H5
-  return styleId
-  // #endif
-})
+const useMapFilter = ref(true)
+const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+let isStyleSet = false
 
 const mapMarkers = computed(() => {
   return [{
@@ -239,19 +231,33 @@ const formatTemp = (t) => {
   return `${t.toFixed(1)}°C`
 }
 
-const onMapUpdated = () => {
+function applyMapDarkStyle() {
+  if (isStyleSet) return
   try {
-    const mapContext = uni.createMapContext('dashboardMap')
-    if (mapContext && mapContext.setMapStyle) {
-      const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
-      // #ifdef APP-PLUS
-      mapContext.setMapStyle(parseInt(styleId) || 2)
-      // #endif
-      // #ifdef H5
-      mapContext.setMapStyle('style' + styleId)
-      // #endif
+    const mapCtx = uni.createMapContext('dashboardMap', getCurrentInstance())
+    if (mapCtx?.setMapStyle) {
+      mapCtx.setMapStyle({
+        styleId: darkStyleId,
+        success: () => {
+          console.log('[Instrument] 地图墨渊主题设置成功')
+          isStyleSet = true
+          useMapFilter.value = false
+        },
+        fail: (err) => {
+          console.warn('[Instrument] 地图主题设置失败，尝试整数参数:', err)
+          try {
+            mapCtx.setMapStyle(parseInt(darkStyleId) || 2)
+            isStyleSet = true
+            useMapFilter.value = false
+          } catch (e) {}
+        }
+      })
     }
   } catch (e) {}
+}
+
+const onMapUpdated = () => {
+  applyMapDarkStyle()
 }
 
 onMounted(() => {
@@ -273,20 +279,7 @@ onMounted(() => {
   if (currentVehicle.value) {
     initVehicleData(currentVehicle.value.vin)
   }
-  setTimeout(() => {
-    try {
-      const mapContext = uni.createMapContext('dashboardMap')
-      if (mapContext && mapContext.setMapStyle) {
-        const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
-        // #ifdef APP-PLUS
-        mapContext.setMapStyle(parseInt(styleId) || 2)
-        // #endif
-        // #ifdef H5
-        mapContext.setMapStyle('style' + styleId)
-        // #endif
-      }
-    } catch (e) {}
-  }, 500)
+  setTimeout(() => applyMapDarkStyle(), 500)
 })
 
 onUnmounted(() => {
@@ -322,6 +315,12 @@ watch(() => currentVehicle.value, (newVal) => {
   if (newVal) {
     initVehicleData(newVal.vin)
   }
+})
+
+watch(() => themeStore.resolvedTheme, () => {
+  useMapFilter.value = true
+  isStyleSet = false
+  applyMapDarkStyle()
 })
 </script>
 

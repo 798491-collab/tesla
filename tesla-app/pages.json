@@ -29,12 +29,14 @@
       }
     },
     {
-      "path": "pages/dashboard/cockpit",
+      "path": "pages/dashboard/HorizontalDashboard",
       "style": {
-        "navigationBarTitleText": "驾驶舱仪表盘",
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "横屏仪表盘",
+        "navigationStyle": "custom",
+        "pageOrientation": "landscape"
       }
     },
+
     {
       "path": "pages/login/login",
       "style": {

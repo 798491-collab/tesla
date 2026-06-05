@@ -1,8 +1,9 @@
 <template>
   <view class="location-container" :class="themeClass">
     <NavBar title="车辆位置" />
-    <view class="map-wrap" :class="{ 'map-dark-filter': mapStyle === 'dark' }">
+    <view class="map-wrap" :class="{ 'map-dark-filter': mapStyle === 'dark' && useMapFilter }">
       <map
+        id="locationMap"
         class="map"
         :latitude="centerLat"
         :longitude="centerLng"
@@ -17,7 +18,8 @@
         :enable-satellite="mapStyle === 'satellite'"
         :enable-traffic="mapStyle === 'traffic'"
         :show-location="true"
-        :layer-style="currentLayerStyle"
+        :subkey="tencentMapKey"
+        @updated="onMapUpdated"
       ></map>
       <view class="map-style-switcher">
         <view
@@ -141,7 +143,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, onActivated } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, getCurrentInstance } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import { getVehicleState } from '@/api/vehicle.js'
 import { useVehicleStore } from '@/store/vehicle'
@@ -168,15 +170,32 @@ const vin = ref('')
 const state = ref({})
 const stateOutput = ref(null)
 const locationAuthorized = ref(false)
+const useMapFilter = ref(true)
 const mapStyle = ref('standard')
-const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || ''
+const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+let isStyleSet = false
+let mapContext = null
 let refreshTimer = null
 
 watch(() => themeStore.resolvedTheme, (theme) => {
   if ((theme === 'dark' || theme === 'visionpro') && mapStyle.value === 'standard') {
     mapStyle.value = 'dark'
   }
+  if (mapStyle.value === 'dark') {
+    useMapFilter.value = true
+    isStyleSet = false
+    applyMapDarkStyle()
+  }
 }, { immediate: true })
+
+watch(mapStyle, (val) => {
+  if (val === 'dark') {
+    useMapFilter.value = true
+    isStyleSet = false
+    applyMapDarkStyle()
+  }
+})
 
 watch(() => vehicleWSData.value, (wsData) => {
   if (!wsData || !Object.keys(wsData).length) return
@@ -239,6 +258,39 @@ const currentLayerStyle = computed(() => {
   return 1
 })
 
+function applyMapDarkStyle() {
+  if (isStyleSet) return
+  try {
+    if (!mapContext) {
+      mapContext = uni.createMapContext('locationMap', getCurrentInstance())
+    }
+    if (mapContext?.setMapStyle) {
+      mapContext.setMapStyle({
+        styleId: darkStyleId,
+        success: () => {
+          console.log('[Location] 地图墨渊主题设置成功')
+          isStyleSet = true
+          useMapFilter.value = false
+        },
+        fail: (err) => {
+          console.warn('[Location] 地图主题设置失败，尝试整数参数:', err)
+          try {
+            mapContext.setMapStyle(parseInt(darkStyleId) || 2)
+            isStyleSet = true
+            useMapFilter.value = false
+          } catch (e) {}
+        }
+      })
+    }
+  } catch (e) {
+    console.warn('[Location] applyMapDarkStyle 异常:', e)
+  }
+}
+
+function onMapUpdated() {
+  applyMapDarkStyle()
+}
+
 const hasLocation = computed(() => state.value.latitude && state.value.latitude !== 0)
 
 const centerLat = computed(() => state.value.latitude || 39.9042)
@@ -289,6 +341,7 @@ onMounted(() => {
     loadAuthStatus()
     startAutoRefresh()
   }
+  setTimeout(() => applyMapDarkStyle(), 800)
 })
 
 onActivated(() => {

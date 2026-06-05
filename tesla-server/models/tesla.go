@@ -95,10 +95,10 @@ type VehicleStateCache struct {
 	DoorRR               bool      `json:"door_rr"`
 	TrunkOpen            bool      `json:"trunk_open"`
 	FrunkOpen            bool      `json:"frunk_open"`
-	WindowFL             bool      `json:"window_fl"`
-	WindowFR             bool      `json:"window_fr"`
-	WindowRL             bool      `json:"window_rl"`
-	WindowRR             bool      `json:"window_rr"`
+	FdWindow            bool      `json:"fd_window"`
+	FpWindow            bool      `json:"fp_window"`
+	RdWindow            bool      `json:"rd_window"`
+	RpWindow            bool      `json:"rp_window"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
 

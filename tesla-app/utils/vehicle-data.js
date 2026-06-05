@@ -21,7 +21,7 @@ const L1_REALTIME_FIELDS = new Set([
 const L2_STATE_FIELDS = new Set([
   'locked', 'door_open', 'door_fl', 'door_fr', 'door_rl', 'door_rr',
   'trunk_open', 'frunk_open', 'windows_open',
-  'window_fl', 'window_fr', 'window_rl', 'window_rr',
+  'fd_window', 'fp_window', 'rd_window', 'rp_window',
   'sentry_mode',
   'valet_mode_enabled', 'service_mode',
   'inside_temp', 'outside_temp', 'driver_temp_setting', 'passenger_temp_setting',
@@ -35,11 +35,11 @@ const L2_STATE_FIELDS = new Set([
   'climate_seat_cooling_front_left', 'climate_seat_cooling_front_right',
   'cabin_overheat_protection_mode', 'cabin_overheat_protection_temperature_limit',
   'seat_vent_enabled', 'rear_display_hvac_enabled', 'wiper_heat_enabled',
-  'charge_port_door_open', 'charge_limit_soc', 'minutes_to_full',
+  'charge_port_door_open', 'charge_port_latch', 'charge_limit_soc', 'minutes_to_full',
   'charging_state', 'charge_speed', 'voltage', 'ampere', 'charge_power', 'added_energy',
   'fast_charger_type', 'battery_heater_on',
   'dc_charging_energy_in', 'ac_charging_energy_in',
-  'charge_port_latch', 'charging_cable_type', 'charge_enable_request',
+  'charging_cable_type', 'charge_enable_request',
   'charge_current_request', 'charge_current_request_max', 'charger_phases',
   'charge_port_cold_weather_mode', 'bms_state', 'bms_full_charge_complete',
   'dcdc_enable', 'lifetime_energy_used',
@@ -288,9 +288,16 @@ function rebuildMergedData() {
 
   // Derive windows_open from individual window states if not already set
   if (merged.windows_open === undefined &&
-      (merged.window_fl !== undefined || merged.window_fr !== undefined ||
-       merged.window_rl !== undefined || merged.window_rr !== undefined)) {
-    merged.windows_open = !!(merged.window_fl || merged.window_fr || merged.window_rl || merged.window_rr)
+      (merged.fd_window !== undefined || merged.fp_window !== undefined ||
+       merged.rd_window !== undefined || merged.rp_window !== undefined)) {
+    merged.windows_open = !!(merged.fd_window || merged.fp_window || merged.rd_window || merged.rp_window)
+  }
+
+  // Derive door_open from individual door states if not already set
+  if (merged.door_open === undefined &&
+      (merged.door_fl !== undefined || merged.door_fr !== undefined ||
+       merged.door_rl !== undefined || merged.door_rr !== undefined)) {
+    merged.door_open = !!(merged.door_fl || merged.door_fr || merged.door_rl || merged.door_rr)
   }
 
   // 始终根据 charging_state 推导 charging 布尔值，避免状态卡住
@@ -405,14 +412,15 @@ function onWSVehicleState(data) {
   if (data.sentry_mode !== undefined) vehicleStore.data.sentry_mode = data.sentry_mode
   if (data.is_ac_on !== undefined) vehicleStore.data.is_ac_on = data.is_ac_on
   if (data.charge_port_door_open !== undefined) vehicleStore.data.charge_port_door_open = data.charge_port_door_open
+  if (data.charge_port_latch !== undefined) vehicleStore.data.charge_port_latch = data.charge_port_latch
   if (data.windows_open !== undefined) vehicleStore.data.windows_open = data.windows_open
   if (data.driving !== undefined) vehicleStore.data.driving = data.driving
 
   // Window states
-  if (data.window_fl !== undefined) vehicleStore.data.window_fl = data.window_fl
-  if (data.window_fr !== undefined) vehicleStore.data.window_fr = data.window_fr
-  if (data.window_rl !== undefined) vehicleStore.data.window_rl = data.window_rl
-  if (data.window_rr !== undefined) vehicleStore.data.window_rr = data.window_rr
+  if (data.fd_window !== undefined) vehicleStore.data.fd_window = data.fd_window
+  if (data.fp_window !== undefined) vehicleStore.data.fp_window = data.fp_window
+  if (data.rd_window !== undefined) vehicleStore.data.rd_window = data.rd_window
+  if (data.rp_window !== undefined) vehicleStore.data.rp_window = data.rp_window
 
   // Mirror
   if (data.mirror_folded !== undefined) vehicleStore.data.mirror_folded = data.mirror_folded
@@ -478,6 +486,8 @@ function onWSVehicleState(data) {
   if (data.destination_latitude !== undefined) vehicleStore.data.destination_latitude = data.destination_latitude
   if (data.destination_longitude !== undefined) vehicleStore.data.destination_longitude = data.destination_longitude
   if (data.destination_name !== undefined) vehicleStore.data.destination_name = data.destination_name
+  if (data.miles_to_arrival !== undefined) vehicleStore.data.miles_to_arrival = data.miles_to_arrival
+  if (data.minutes_to_arrival !== undefined) vehicleStore.data.minutes_to_arrival = data.minutes_to_arrival
 
   // Supercharging
   if (data.supercharging !== undefined) vehicleStore.data.supercharging = data.supercharging
@@ -485,6 +495,8 @@ function onWSVehicleState(data) {
   if (data.media_playback_status !== undefined) vehicleStore.data.media_playback_status = data.media_playback_status
   if (data.media_audio_source !== undefined) vehicleStore.data.media_audio_source = data.media_audio_source
   if (data.media_volume !== undefined) vehicleStore.data.media_volume = data.media_volume
+  if (data.media_audio_volume_increment !== undefined) vehicleStore.data.media_audio_volume_increment = data.media_audio_volume_increment
+  if (data.media_audio_volume_max !== undefined) vehicleStore.data.media_audio_volume_max = data.media_audio_volume_max
   if (data.now_playing_title !== undefined) vehicleStore.data.now_playing_title = data.now_playing_title
   if (data.now_playing_artist !== undefined) vehicleStore.data.now_playing_artist = data.now_playing_artist
   if (data.now_playing_album !== undefined) vehicleStore.data.now_playing_album = data.now_playing_album
@@ -563,6 +575,8 @@ function onWSMediaState(data) {
   if (data.media_playback_status !== undefined) vehicleStore.data.media_playback_status = data.media_playback_status
   if (data.media_audio_source !== undefined) vehicleStore.data.media_audio_source = data.media_audio_source
   if (data.media_volume !== undefined) vehicleStore.data.media_volume = data.media_volume
+  if (data.media_audio_volume_increment !== undefined) vehicleStore.data.media_audio_volume_increment = data.media_audio_volume_increment
+  if (data.media_audio_volume_max !== undefined) vehicleStore.data.media_audio_volume_max = data.media_audio_volume_max
   if (data.now_playing_title !== undefined) vehicleStore.data.now_playing_title = data.now_playing_title
   if (data.now_playing_artist !== undefined) vehicleStore.data.now_playing_artist = data.now_playing_artist
   if (data.now_playing_album !== undefined) vehicleStore.data.now_playing_album = data.now_playing_album

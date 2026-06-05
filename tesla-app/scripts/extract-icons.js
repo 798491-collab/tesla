@@ -140,9 +140,25 @@ const output = `// Auto-generated from @vicons/ionicons5 by scripts/extract-icon
 export default ${JSON.stringify(iconData, null, 2)}
 `;
 
-fs.writeFileSync(path.resolve(__dirname, '../utils/iconPaths.js'), output);
+// 手动添加的图标（ionicons5 中不存在，重新生成时需保留）
+const manualIcons = {
+  "Window": {
+    "viewBox": "0 0 512 512",
+    "content": "<rect x=\"96\" y=\"64\" width=\"320\" height=\"280\" rx=\"32\" ry=\"32\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\"/><line x1=\"96\" y1=\"200\" x2=\"416\" y2=\"200\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\"/><line x1=\"256\" y1=\"64\" x2=\"256\" y2=\"200\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\"/><path d=\"M176 448l32-72\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"24\"/><path d=\"M336 448l-32-72\" fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"24\"/>"
+  }
+};
 
-console.log(`Generated ${Object.keys(iconData).length} icons`);
+// 合并手动图标到自动生成的数据中
+const finalData = { ...iconData, ...manualIcons };
+const finalOutput = `// Auto-generated from @vicons/ionicons5 by scripts/extract-icons.js
+// Do not edit manually - run 'node scripts/extract-icons.js' to regenerate
+
+export default ${JSON.stringify(finalData, null, 2)}
+`;
+
+fs.writeFileSync(path.resolve(__dirname, '../utils/iconPaths.js'), finalOutput);
+
+console.log(`Generated ${Object.keys(finalData).length} icons (${Object.keys(iconData).length} auto + ${Object.keys(manualIcons).length} manual)`);
 if (notFound.length > 0) {
   console.log('\nNot found:');
   notFound.forEach(n => console.log(`  ${n}`));

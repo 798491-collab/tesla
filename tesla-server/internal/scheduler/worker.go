@@ -325,9 +325,11 @@ func (w *VehicleWorker) pollFullData() {
 
 	realtime := fleet.ExtractRealtimeFromSimple(data)
 	stateData := fleet.ExtractStateFromSimple(data)
+	mediaData := fleet.ExtractMediaFromSimple(data)
 
 	ws.BroadcastRealtimeUpdate(w.VIN, realtime)
 	ws.BroadcastStateUpdate(w.VIN, stateData)
+	ws.BroadcastMediaUpdate(w.VIN, mediaData)
 
 	w.updateActivityFromData(data)
 

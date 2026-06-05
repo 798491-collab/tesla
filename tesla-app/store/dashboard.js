@@ -3,12 +3,12 @@ import { ref, computed } from 'vue'
 
 const DASHBOARD_TYPES = [
   { key: 'instrument', label: '极简仪表盘', desc: '横屏双环仪表', icon: 'Dashboard' },
-  { key: 'cockpit', label: '驾驶舱仪表盘', desc: '实时数据 + 地图 + 控制', icon: 'Speedometer' },
+  { key: 'horizontal', label: '全屏横屏仪表盘', desc: '特斯拉风格全屏驾驶舱', icon: 'Desktop' },
 ]
 
 const DASHBOARD_ROUTES = {
   instrument: '/pages/dashboard/instrument',
-  cockpit: '/pages/dashboard/cockpit',
+  horizontal: '/pages/dashboard/HorizontalDashboard',
 }
 
 export const useDashboardStore = defineStore('dashboard', () => {

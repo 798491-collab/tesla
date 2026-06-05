@@ -219,9 +219,9 @@
                         </view>
                     </view>
                     <view class="menu-grid-item location-grid-item" @click="goToLocation">
-                        <map v-if="hasLocation" class="location-card-map" :latitude="locationLat"
+                        <map v-if="hasLocation" id="mapId" class="location-card-map" :latitude="locationLat"
                             :longitude="locationLng" :markers="locationMarkers" :scale="15" :enable-scroll="false"
-                            :enable-zoom="false" :layer-style="dashboardMapLayerStyle"></map>
+                            :enable-zoom="false" :subkey="tencentMapKey" @updated="onMapUpdated"></map>
                         <view class="location-card-overlay">
                             <view class="location-card-badge">
                                 <Icon name="Location" :size="12" color="#fff" />
@@ -313,7 +313,8 @@
         computed,
         onMounted,
         onUnmounted,
-        watch
+        watch,
+        getCurrentInstance
     } from 'vue'
     import {
         onShow,
@@ -384,10 +385,14 @@
     const chargingColor = computed(() => themeStore.colors.charging)
     const chargingCompleteColor = computed(() => themeStore.colors.chargingComplete)
 
+    const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+    const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+    let isStyleSet = false
+
     const dashboardMapLayerStyle = computed(() => {
         const isDark = themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro'
         if (isDark) {
-            const styleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+            const styleId = darkStyleId
             // #ifdef APP-PLUS
             return parseInt(styleId) || 2
             // #endif
@@ -400,6 +405,33 @@
         }
         return 1
     })
+
+    function applyMapDarkStyle() {
+        if (isStyleSet) return
+        try {
+            const mapCtx = uni.createMapContext('mapId', getCurrentInstance())
+            if (mapCtx?.setMapStyle) {
+                mapCtx.setMapStyle({
+                    styleId: darkStyleId,
+                    success: () => {
+                        console.log('[Dashboard] 地图墨渊主题设置成功')
+                        isStyleSet = true
+                    },
+                    fail: (err) => {
+                        console.warn('[Dashboard] 地图主题设置失败，尝试整数参数:', err)
+                        try {
+                            mapCtx.setMapStyle(parseInt(darkStyleId) || 2)
+                            isStyleSet = true
+                        } catch (e) {}
+                    }
+                })
+            }
+        } catch (e) {}
+    }
+
+    function onMapUpdated() {
+        applyMapDarkStyle()
+    }
 
     const userStore = useUserStore()
     const vehicleDataStore = useVehicleData()
@@ -491,7 +523,18 @@
     }
     const isMediaPlaying = computed(() => mediaPlaybackStatus.value === 'Playing')
     const mediaSourceLabel = computed(() => {
-        const sourceMap = { Radio: '收音机', Bluetooth: '蓝牙', Streaming: '流媒体', Caraoke: '卡拉OK' }
+        const sourceMap = {
+            Radio: '收音机', FM: '收音机', AM: '收音机',
+            Bluetooth: '蓝牙', BT: '蓝牙',
+            Streaming: '流媒体', Slacker: '流媒体',
+            Spotify: 'Spotify', AppleMusic: 'Apple Music', 'Apple Music': 'Apple Music',
+            TuneIn: 'TuneIn', Tidal: 'Tidal', TIDAL: 'TIDAL',
+            Caraoke: '卡拉OK',
+            USB: 'USB', 'USB Drive': 'USB',
+            // 中国区常见媒体源
+            'NetEase Cloud Music': '网易云音乐', 'QQ Music': 'QQ音乐',
+            'KuGou Music': '酷狗音乐',
+        }
         return sourceMap[mediaAudioSource.value] || mediaAudioSource.value || '未知'
     })
     const hasMediaInfo = computed(() => nowPlayingTitle.value || mediaAudioSource.value)
@@ -921,6 +964,7 @@
         if (!vehicleStore.hasVehicles) {
             await vehicleStore.fetchVehicles()
         }
+        setTimeout(() => applyMapDarkStyle(), 500)
     })
 
     onShow(async () => {

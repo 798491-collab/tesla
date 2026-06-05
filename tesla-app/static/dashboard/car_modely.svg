@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160" fill="none">
+  <!-- Tesla Model Y Side View - White outline on transparent -->
+  <g stroke="white" stroke-width="2" fill="none" opacity="0.9">
+    <!-- Body -->
+    <path d="M50,120 L50,90 C50,85 55,75 65,70 L100,55 C110,50 120,45 140,42 L200,38 C220,37 250,38 270,42 L310,52 C330,58 345,68 350,80 L355,95 L355,120"/>
+    <!-- Roof line -->
+    <path d="M100,55 L140,42 C160,38 180,36 200,35 C220,34 250,35 270,42 L310,52"/>
+    <!-- Windows -->
+    <path d="M105,58 L138,46 C155,42 175,40 195,39 L195,58 Z" fill="rgba(255,255,255,0.08)"/>
+    <path d="M200,39 C220,38 245,39 265,44 L300,54 L300,58 L200,58 Z" fill="rgba(255,255,255,0.08)"/>
+    <!-- Front wheel -->
+    <circle cx="110" cy="120" r="25" stroke-width="2.5"/>
+    <circle cx="110" cy="120" r="15" stroke-width="1" opacity="0.4"/>
+    <!-- Rear wheel -->
+    <circle cx="300" cy="120" r="25" stroke-width="2.5"/>
+    <circle cx="300" cy="120" r="15" stroke-width="1" opacity="0.4"/>
+    <!-- Door line -->
+    <line x1="195" y1="42" x2="195" y2="118" stroke-width="0.8" opacity="0.3"/>
+    <!-- Headlight -->
+    <path d="M345,75 L355,80 L355,85 L348,82 Z" fill="rgba(0,162,255,0.4)" stroke="none"/>
+    <!-- Taillight -->
+    <path d="M50,85 L55,82 L55,95 L50,95 Z" fill="rgba(255,50,50,0.4)" stroke="none"/>
+  </g>
+</svg>

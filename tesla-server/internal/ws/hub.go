@@ -189,6 +189,12 @@ func BroadcastStateUpdate(vin string, data interface{}) {
 	}
 }
 
+func BroadcastMediaUpdate(vin string, data interface{}) {
+	if DefaultHub != nil {
+		DefaultHub.BroadcastToVIN(vin, "media_state", data)
+	}
+}
+
 func BroadcastOnlineState(vin string, onlineState string, online bool) {
 	if DefaultHub != nil {
 		msgData := map[string]interface{}{

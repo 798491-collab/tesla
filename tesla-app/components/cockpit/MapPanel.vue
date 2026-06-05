@@ -2,6 +2,7 @@
   <view class="map-panel">
     <map
       v-if="hasLocation"
+      id="cockpitMap"
       class="map-view"
       :latitude="latitude"
       :longitude="longitude"
@@ -14,7 +15,8 @@
       :markers="markers"
       :enable-satellite="false"
       :enable-traffic="false"
-      :layer-style="mapLayerStyle"
+      :subkey="tencentMapKey"
+      @updated="onMapUpdated"
     ></map>
     <view v-else class="map-fallback">
       <Icon name="Location" :size="32" themeColor="inactiveLight" />
@@ -30,7 +32,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, getCurrentInstance } from 'vue'
 import { useThemeStore } from '@/store/theme'
 
 const props = defineProps({
@@ -54,6 +56,10 @@ const props = defineProps({
 
 const themeStore = useThemeStore()
 
+const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+let isStyleSet = false
+
 const mapLayerStyle = computed(() => {
   const isDark = themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro'
   if (isDark) {
@@ -69,6 +75,37 @@ const mapLayerStyle = computed(() => {
     // #endif
   }
   return 1
+})
+
+function applyMapDarkStyle() {
+  if (isStyleSet) return
+  try {
+    const mapCtx = uni.createMapContext('cockpitMap', getCurrentInstance())
+    if (mapCtx?.setMapStyle) {
+      mapCtx.setMapStyle({
+        styleId: darkStyleId,
+        success: () => {
+          console.log('[Cockpit] 地图墨渊主题设置成功')
+          isStyleSet = true
+        },
+        fail: (err) => {
+          console.warn('[Cockpit] 地图主题设置失败，尝试整数参数:', err)
+          try {
+            mapCtx.setMapStyle(parseInt(darkStyleId) || 2)
+            isStyleSet = true
+          } catch (e) {}
+        }
+      })
+    }
+  } catch (e) {}
+}
+
+function onMapUpdated() {
+  applyMapDarkStyle()
+}
+
+onMounted(() => {
+  setTimeout(() => applyMapDarkStyle(), 500)
 })
 
 const markers = computed(() => {

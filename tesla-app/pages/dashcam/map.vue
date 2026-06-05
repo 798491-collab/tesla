@@ -2,8 +2,9 @@
   <view class="map-container" :class="themeClass">
     <NavBar title="轨迹地图" />
 
-    <view class="map-wrap" :class="{ 'map-dark-filter': mapStyle === 'dark' }">
+    <view class="map-wrap" :class="{ 'map-dark-filter': mapStyle === 'dark' && useMapFilter }">
       <map
+        id="mapId"
         class="map"
         :latitude="centerLat"
         :longitude="centerLng"
@@ -17,7 +18,8 @@
         :enable-scroll="true"
         :enable-rotate="true"
         :show-location="false"
-        :layer-style="currentLayerStyle"
+        :subkey="tencentMapKey"
+        @updated="onMapUpdated"
         @markertap="onMarkerTap"
         @regionchange="onRegionChange"
       ></map>
@@ -107,7 +109,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, getCurrentInstance, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import Icon from '@/components/Icon/Icon.vue'
@@ -121,8 +123,11 @@ const dateIconColor = computed(() => themeStore.colors.primary)
 const statIconColor = computed(() => themeStore.colors.primary)
 const emptyIconColor = computed(() => themeStore.colors.inactiveIcon)
 
+const useMapFilter = ref(true)
 const mapStyle = ref('standard')
-const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || ''
+const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+let isStyleSet = false
 const mapScale = ref(12)
 const centerLat = ref(39.9042)
 const centerLng = ref(116.4074)
@@ -152,6 +157,35 @@ const currentLayerStyle = computed(() => {
   }
   return 1
 })
+
+function applyMapDarkStyle() {
+  if (isStyleSet) return
+  try {
+    const mapCtx = uni.createMapContext('mapId', getCurrentInstance())
+    if (mapCtx?.setMapStyle) {
+      mapCtx.setMapStyle({
+        styleId: darkStyleId,
+        success: () => {
+          console.log('[Map] 地图墨渊主题设置成功')
+          isStyleSet = true
+          useMapFilter.value = false
+        },
+        fail: (err) => {
+          console.warn('[Map] 地图主题设置失败，尝试整数参数:', err)
+          try {
+            mapCtx.setMapStyle(parseInt(darkStyleId) || 2)
+            isStyleSet = true
+            useMapFilter.value = false
+          } catch (e) {}
+        }
+      })
+    }
+  } catch (e) {}
+}
+
+function onMapUpdated() {
+  applyMapDarkStyle()
+}
 
 const displayDate = computed(() => {
   const d = currentDate.value
@@ -371,6 +405,23 @@ onMounted(async () => {
     await initDB()
   } catch (e) {}
   loadDayData()
+  setTimeout(() => applyMapDarkStyle(), 500)
+})
+
+watch(mapStyle, (val) => {
+  if (val === 'dark') {
+    useMapFilter.value = true
+    isStyleSet = false
+    applyMapDarkStyle()
+  }
+})
+
+watch(() => themeStore.resolvedTheme, () => {
+  if (mapStyle.value === 'dark') {
+    useMapFilter.value = true
+    isStyleSet = false
+    applyMapDarkStyle()
+  }
 })
 </script>
 

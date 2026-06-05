@@ -266,6 +266,31 @@
               </view>
             </view>
           </view>
+          <view class="window-section">
+            <text class="section-subtitle">车窗</text>
+            <view class="door-grid">
+              <view class="door-item" :class="{ open: vehicleData.fd_window }">
+                <Icon name="Window" :size="18" :themeColor="vehicleData.fd_window ? 'doorOpen' : 'inactiveLight'" />
+                <text class="door-label">左前</text>
+                <text class="door-status">{{ vehicleData.fd_window ? '开' : '关' }}</text>
+              </view>
+              <view class="door-item" :class="{ open: vehicleData.fp_window }">
+                <Icon name="Window" :size="18" :themeColor="vehicleData.fp_window ? 'doorOpen' : 'inactiveLight'" />
+                <text class="door-label">右前</text>
+                <text class="door-status">{{ vehicleData.fp_window ? '开' : '关' }}</text>
+              </view>
+              <view class="door-item" :class="{ open: vehicleData.rd_window }">
+                <Icon name="Window" :size="18" :themeColor="vehicleData.rd_window ? 'doorOpen' : 'inactiveLight'" />
+                <text class="door-label">左后</text>
+                <text class="door-status">{{ vehicleData.rd_window ? '开' : '关' }}</text>
+              </view>
+              <view class="door-item" :class="{ open: vehicleData.rp_window }">
+                <Icon name="Window" :size="18" :themeColor="vehicleData.rp_window ? 'doorOpen' : 'inactiveLight'" />
+                <text class="door-label">右后</text>
+                <text class="door-status">{{ vehicleData.rp_window ? '开' : '关' }}</text>
+              </view>
+            </view>
+          </view>
         </view>
 
         <view class="glass-card" v-if="vehicleData && (vehicleData.tpms_fl || vehicleData.tpms_fr || vehicleData.tpms_rl || vehicleData.tpms_rr)">
@@ -743,6 +768,42 @@ onUnmounted(() => {
     }
 
     .trunk-status {
+      font-size: 22rpx;
+      font-weight: 600;
+      color: var(--dark-page-text-secondary);
+      margin-top: 4rpx;
+    }
+  }
+}
+
+.window-section {
+  .door-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12rpx;
+  }
+
+  .door-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20rpx 8rpx;
+    background: var(--dark-page-glass-bg);
+    border-radius: 16rpx;
+    border: 1rpx solid var(--dark-page-glass-border);
+
+    &.open {
+      background: rgba(251, 191, 36, 0.08);
+      border-color: rgba(251, 191, 36, 0.2);
+    }
+
+    .door-label {
+      font-size: 20rpx;
+      color: var(--dark-page-text-hint);
+      margin-top: 8rpx;
+    }
+
+    .door-status {
       font-size: 22rpx;
       font-weight: 600;
       color: var(--dark-page-text-secondary);

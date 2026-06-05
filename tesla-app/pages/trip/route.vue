@@ -10,7 +10,9 @@
       :markers="markers"
       :polyline="polyline"
       :scale="scale"
+      :subkey="tencentMapKey"
       show-location
+      @updated="onMapUpdated"
     ></map>
 
     <view class="info-card">
@@ -121,7 +123,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, getCurrentInstance } from 'vue'
 import { getTripPoints } from '@/api/trip.js'
 import { getTripAnalysis, triggerTripAnalysis } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
@@ -130,6 +132,9 @@ import { useThemeStore } from '@/store/theme'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
+const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+let isStyleSet = false
 const mapStartColor = computed(() => themeStore.colors.mapStart)
 const mapEndColor = computed(() => themeStore.colors.mapEnd)
 const mapLineColor = computed(() => themeStore.colors.mapLine)
@@ -214,10 +219,10 @@ const polyline = computed(() => {
       longitude: p.longitude
     })),
     color: mapLineColor.value,
-    width: 6,
+    width: 8,
     arrowLine: true,
     borderColor: mapLineBorderColor.value,
-    borderWidth: 1
+    borderWidth: 2
   }]
 })
 
@@ -229,7 +234,35 @@ onMounted(() => {
     loadData()
     loadAIAnalysis()
   }
+  setTimeout(() => applyMapDarkStyle(), 500)
 })
+
+const onMapUpdated = () => {
+  applyMapDarkStyle()
+}
+
+const applyMapDarkStyle = () => {
+  if (isStyleSet) return
+  if (themeStore.themeClass?.includes('dark')) {
+    const mapCtx = uni.createMapContext('routeMap', getCurrentInstance())
+    if (mapCtx?.setMapStyle) {
+      mapCtx.setMapStyle({
+        styleId: darkStyleId,
+        success: () => {
+          console.log('[Route] 地图墨渊主题设置成功')
+          isStyleSet = true
+        },
+        fail: (err) => {
+          console.warn('[Route] 地图主题设置失败，尝试整数参数:', err)
+          try {
+            mapCtx.setMapStyle(parseInt(darkStyleId) || 2)
+            isStyleSet = true
+          } catch (e) {}
+        }
+      })
+    }
+  }
+}
 
 const calcScaleFromSpan = (latSpan, lngSpan) => {
   const paddedSpan = Math.max(latSpan, lngSpan) * 1.5

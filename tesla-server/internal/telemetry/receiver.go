@@ -393,6 +393,7 @@ func handleJSONTelemetry(vin string, body []byte) {
 		if v, ok := doors["TrunkFront"].(bool); ok {
 			stateFields["frunk_open"] = v
 		}
+		// door_open 只计算四个车门，不含 trunk/frunk（与 REST 通道一致）
 		stateFields["door_open"] = doorOpen
 		hasState = true
 	}
@@ -410,6 +411,10 @@ func handleJSONTelemetry(vin string, body []byte) {
 	}
 	if v, ok := getBool(data, "ChargePortDoorOpen"); ok {
 		stateFields["charge_port_door_open"] = v
+		hasState = true
+	}
+	if v, ok := getString(data, "ChargePortLatch"); ok {
+		stateFields["charge_port_latch"] = v
 		hasState = true
 	}
 	if v, ok := getInt(data, "ChargeLimitSoc"); ok {
@@ -460,6 +465,12 @@ func handleJSONTelemetry(vin string, body []byte) {
 			hasState = true
 		case "FpWindow":
 			stateFields["fp_window"] = getBoolVal(v, "value")
+			hasState = true
+		case "RdWindow":
+			stateFields["rd_window"] = getBoolVal(v, "value")
+			hasState = true
+		case "RpWindow":
+			stateFields["rp_window"] = getBoolVal(v, "value")
 			hasState = true
 		case "DriverSeatBelt":
 			stateFields["driver_seat_belt"] = getBoolVal(v, "value")
@@ -981,6 +992,19 @@ func handleJSONTelemetry(vin string, body []byte) {
 	if v, ok := getString(data, "MediaPlaybackStatus"); ok {
 		media.PlaybackStatus = v
 		hasMedia = true
+	} else if v, ok := getFloat(data, "MediaPlaybackStatus"); ok {
+		// JSON 降级路径中，MediaPlaybackStatus 可能是数字枚举值
+		switch int(v) {
+		case 1:
+			media.PlaybackStatus = "Stopped"
+		case 2:
+			media.PlaybackStatus = "Playing"
+		case 3:
+			media.PlaybackStatus = "Paused"
+		default:
+			media.PlaybackStatus = "Unknown"
+		}
+		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaPlaybackSource"); ok {
 		media.AudioSource = v
@@ -996,6 +1020,14 @@ func handleJSONTelemetry(vin string, body []byte) {
 	}
 	if v, ok := getFloat(data, "MediaVolume"); ok {
 		media.Volume = int(v)
+		hasMedia = true
+	}
+	if v, ok := getFloat(data, "MediaAudioVolumeIncrement"); ok {
+		media.AudioVolumeIncrement = int(v)
+		hasMedia = true
+	}
+	if v, ok := getFloat(data, "MediaAudioVolumeMax"); ok {
+		media.AudioVolumeMax = int(v)
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaNowPlayingTitle"); ok {
@@ -1151,28 +1183,24 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			doors := datum.Value.GetDoorValue()
 			if doors != nil {
 				doorOpen := false
+				stateFields["door_fl"] = doors.GetDriverFront()
 				if doors.GetDriverFront() {
-					stateFields["door_fl"] = true
 					doorOpen = true
 				}
+				stateFields["door_rl"] = doors.GetDriverRear()
 				if doors.GetDriverRear() {
-					stateFields["door_rl"] = true
 					doorOpen = true
 				}
+				stateFields["door_fr"] = doors.GetPassengerFront()
 				if doors.GetPassengerFront() {
-					stateFields["door_fr"] = true
 					doorOpen = true
 				}
+				stateFields["door_rr"] = doors.GetPassengerRear()
 				if doors.GetPassengerRear() {
-					stateFields["door_rr"] = true
 					doorOpen = true
 				}
-				if doors.GetTrunkRear() {
-					stateFields["trunk_open"] = true
-				}
-				if doors.GetTrunkFront() {
-					stateFields["frunk_open"] = true
-				}
+				stateFields["trunk_open"] = doors.GetTrunkRear()
+				stateFields["frunk_open"] = doors.GetTrunkFront()
 				stateFields["door_open"] = doorOpen
 				hasState = true
 			}
@@ -1188,6 +1216,10 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			hasState = true
 		case protos.Field_ChargePortDoorOpen:
 			stateFields["charge_port_door_open"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_ChargePortLatch:
+			latchVal := datum.Value.GetChargePortLatchValue()
+			stateFields["charge_port_latch"] = chargePortLatchToString(latchVal)
 			hasState = true
 		case protos.Field_ChargeLimitSoc:
 			stateFields["charge_limit_soc"] = getIntValue(datum.Value)
@@ -1264,10 +1296,16 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["driver_seat_occupied"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_FdWindow:
-			stateFields["fd_window"] = getIntValue(datum.Value)
+			stateFields["fd_window"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_FpWindow:
-			stateFields["fp_window"] = getIntValue(datum.Value)
+			stateFields["fp_window"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_RdWindow:
+			stateFields["rd_window"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_RpWindow:
+			stateFields["rp_window"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_HvacACEnabled:
 			stateFields["hvac_ac_enabled"] = datum.Value.GetBooleanValue()
@@ -1323,9 +1361,6 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			hasState = true
 		case protos.Field_FastChargerType:
 			stateFields["fast_charger_type"] = getIntValue(datum.Value)
-			hasState = true
-		case protos.Field_ChargePortLatch:
-			stateFields["charge_port_latch"] = getIntValue(datum.Value)
 			hasState = true
 		case protos.Field_ChargingCableType:
 			stateFields["charging_cable_type"] = getIntValue(datum.Value)
@@ -1453,6 +1488,12 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			hasMedia = true
 		case protos.Field_MediaAudioVolume:
 			media.Volume = getIntValue(datum.Value)
+			hasMedia = true
+		case protos.Field_MediaAudioVolumeIncrement:
+			media.AudioVolumeIncrement = getIntValue(datum.Value)
+			hasMedia = true
+		case protos.Field_MediaAudioVolumeMax:
+			media.AudioVolumeMax = getIntValue(datum.Value)
 			hasMedia = true
 		case protos.Field_MediaNowPlayingDuration:
 			media.NowPlayingDuration = getIntValue(datum.Value)
@@ -1585,6 +1626,19 @@ func detailedChargeStateToString(state protos.DetailedChargeStateValue) string {
 	}
 }
 
+func chargePortLatchToString(latch protos.ChargePortLatchValue) string {
+	switch latch {
+	case protos.ChargePortLatchValue_ChargePortLatchDisengaged:
+		return "Disengaged"
+	case protos.ChargePortLatchValue_ChargePortLatchEngaged:
+		return "Engaged"
+	case protos.ChargePortLatchValue_ChargePortLatchBlocking:
+		return "Blocking"
+	default:
+		return "Unknown"
+	}
+}
+
 func mediaStatusToString(status protos.MediaStatus) string {
 	switch status {
 	case protos.MediaStatus_MediaStatusStopped:
@@ -1630,15 +1684,17 @@ func updateMediaState(vin string, media *fleet.MediaStateData) {
 	mediaMu.Unlock()
 
 	fields := map[string]interface{}{
-		"media_playback_status": media.PlaybackStatus,
-		"media_audio_source":    media.AudioSource,
-		"media_volume":          media.Volume,
-		"now_playing_title":     media.NowPlayingTitle,
-		"now_playing_artist":    media.NowPlayingArtist,
-		"now_playing_album":     media.NowPlayingAlbum,
-		"now_playing_duration":  media.NowPlayingDuration,
-		"now_playing_elapsed":   media.NowPlayingElapsed,
-		"now_playing_station":   media.NowPlayingStation,
+		"media_playback_status":      media.PlaybackStatus,
+		"media_audio_source":         media.AudioSource,
+		"media_volume":               media.Volume,
+		"media_audio_volume_increment": media.AudioVolumeIncrement,
+		"media_audio_volume_max":     media.AudioVolumeMax,
+		"now_playing_title":          media.NowPlayingTitle,
+		"now_playing_artist":         media.NowPlayingArtist,
+		"now_playing_album":          media.NowPlayingAlbum,
+		"now_playing_duration":       media.NowPlayingDuration,
+		"now_playing_elapsed":        media.NowPlayingElapsed,
+		"now_playing_station":        media.NowPlayingStation,
 	}
 
 	if err := redis.UpdateVehicleStateFields(vin, fields); err != nil {

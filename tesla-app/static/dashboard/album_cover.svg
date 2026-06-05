@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Cyberpunk Album Cover -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0020"/>
+      <stop offset="50%" stop-color="#1a0040"/>
+      <stop offset="100%" stop-color="#0a0020"/>
+    </linearGradient>
+    <linearGradient id="wave1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00a2ff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#00a2ff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00a2ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="wave2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff00ff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#ff00ff" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#ff00ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="wave3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00ff88" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#00ff88" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#00ff88" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" fill="url(#bg)"/>
+  <!-- Sound waves -->
+  <path d="M0,80 Q50,60 100,80 Q150,100 200,80" stroke="url(#wave1)" stroke-width="2" fill="none"/>
+  <path d="M0,100 Q50,80 100,100 Q150,120 200,100" stroke="url(#wave2)" stroke-width="2" fill="none"/>
+  <path d="M0,120 Q50,100 100,120 Q150,140 200,120" stroke="url(#wave3)" stroke-width="2" fill="none"/>
+  <path d="M0,90 Q50,70 100,90 Q150,110 200,90" stroke="url(#wave1)" stroke-width="1" fill="none" opacity="0.5"/>
+  <path d="M0,110 Q50,90 100,110 Q150,130 200,110" stroke="url(#wave2)" stroke-width="1" fill="none" opacity="0.5"/>
+  <!-- Grid lines -->
+  <line x1="0" y1="140" x2="200" y2="140" stroke="#00a2ff" stroke-width="0.5" opacity="0.2"/>
+  <line x1="0" y1="160" x2="200" y2="160" stroke="#ff00ff" stroke-width="0.5" opacity="0.15"/>
+  <line x1="0" y1="180" x2="200" y2="180" stroke="#00ff88" stroke-width="0.5" opacity="0.1"/>
+  <!-- Center circle -->
+  <circle cx="100" cy="100" r="30" stroke="#00a2ff" stroke-width="1" fill="none" opacity="0.3"/>
+  <circle cx="100" cy="100" r="20" stroke="#ff00ff" stroke-width="0.8" fill="none" opacity="0.2"/>
+  <circle cx="100" cy="100" r="5" fill="#00a2ff" opacity="0.6"/>
+</svg>

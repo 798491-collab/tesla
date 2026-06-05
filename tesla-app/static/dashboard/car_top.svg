@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 260" fill="none">
+  <!-- Tesla Model Y Top-down View - White outline on transparent -->
+  <g stroke="white" stroke-width="1.5" fill="none" opacity="0.9">
+    <!-- Body outline -->
+    <path d="M30,20 L90,20 C95,20 100,25 102,35 L105,80 C106,100 106,160 105,180 L102,225 C100,235 95,240 90,240 L30,240 C25,240 20,235 18,225 L15,180 C14,160 14,100 15,80 L18,35 C20,25 25,20 30,20 Z"/>
+    <!-- Windshield -->
+    <path d="M35,35 L85,35 C88,35 90,38 91,42 L93,70 L27,70 L29,42 C30,38 32,35 35,35 Z" fill="rgba(255,255,255,0.06)"/>
+    <!-- Rear window -->
+    <path d="M35,225 L85,225 C88,225 90,222 91,218 L93,190 L27,190 L29,218 C30,222 32,225 35,225 Z" fill="rgba(255,255,255,0.06)"/>
+    <!-- Roof panel -->
+    <rect x="28" y="75" width="64" height="110" rx="4" stroke-width="0.8" opacity="0.2"/>
+    <!-- Left front wheel -->
+    <ellipse cx="12" cy="65" rx="10" ry="16" stroke-width="2"/>
+    <!-- Right front wheel -->
+    <ellipse cx="108" cy="65" rx="10" ry="16" stroke-width="2"/>
+    <!-- Left rear wheel -->
+    <ellipse cx="12" cy="195" rx="10" ry="16" stroke-width="2"/>
+    <!-- Right rear wheel -->
+    <ellipse cx="108" cy="195" rx="10" ry="16" stroke-width="2"/>
+    <!-- Center line -->
+    <line x1="60" y1="30" x2="60" y2="230" stroke-width="0.5" opacity="0.15"/>
+  </g>
+</svg>

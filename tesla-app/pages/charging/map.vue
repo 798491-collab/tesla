@@ -2,6 +2,7 @@
   <view class="charging-map-container" :class="themeClass">
     <NavBar title="充电地图" />
     <map
+      id="chargingMap"
       class="map"
       :latitude="centerLat"
       :longitude="centerLng"
@@ -12,7 +13,9 @@
       :enable-zoom="true"
       :enable-scroll="true"
       :enable-rotate="true"
+      :subkey="tencentMapKey"
       @markertap="onMarkerTap"
+      @updated="onMapUpdated"
     ></map>
 
     <view class="list-card">
@@ -55,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, getCurrentInstance } from 'vue'
 import { getChargingLogs } from '@/api/charging.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
@@ -63,6 +66,9 @@ import { useThemeStore } from '@/store/theme'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
+const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
+let isStyleSet = false
 
 const vin = ref('')
 const logs = ref([])
@@ -143,7 +149,21 @@ onMounted(() => {
   if (vin.value) {
     loadData()
   }
+  setTimeout(() => applyMapDarkStyle(), 500)
 })
+
+const onMapUpdated = () => {
+  applyMapDarkStyle()
+}
+
+const applyMapDarkStyle = () => {
+  if (isStyleSet) return
+  if (themeStore.themeClass?.includes('dark')) {
+    const mapCtx = uni.createMapContext('chargingMap', getCurrentInstance())
+    mapCtx.setMapStyle({ styleId: darkStyleId })
+    isStyleSet = true
+  }
+}
 
 const loadData = () => {
   getChargingLogs(vin.value).then((res) => {
