@@ -334,6 +334,9 @@ func (w *VehicleWorker) pollFullData() {
 		MinutesToFull: data.MinutesToFull,
 		Locked:        data.Locked,
 		DoorOpen:      data.DoorOpen,
+		CruiseState:        data.CruiseState,
+		AutosteerState:     data.AutosteerState,
+		CruiseControlState: data.CruiseControlState,
 	}, "api_poll")
 
 	redis.SetVehicleState(w.VIN, data)
@@ -417,6 +420,9 @@ func (w *VehicleWorker) pollWakingConfirm() {
 		MinutesToFull: data.MinutesToFull,
 		Locked:        data.Locked,
 		DoorOpen:      data.DoorOpen,
+		CruiseState:        data.CruiseState,
+		AutosteerState:     data.AutosteerState,
+		CruiseControlState: data.CruiseControlState,
 	}, "waking_confirm")
 	redis.SetVehicleState(w.VIN, data)
 	redis.SetVehicleOnline(w.VIN, data.Online)

@@ -151,6 +151,9 @@ func GetVehicleStateFromRedis(vin string) (*fleet.SimpleVehicleData, error) {
 			MinutesToFull: state.MinutesToFull,
 			Locked:        state.Locked,
 			DoorOpen:      state.DoorOpen,
+			CruiseState:        state.CruiseState,
+			AutosteerState:     state.AutosteerState,
+			CruiseControlState: state.CruiseControlState,
 		})
 	}
 	return &state, nil
@@ -198,6 +201,9 @@ func RefreshVehicleState(vin string) (*fleet.SimpleVehicleData, error) {
 		MinutesToFull: data.MinutesToFull,
 		Locked:        data.Locked,
 		DoorOpen:      data.DoorOpen,
+		CruiseState:        data.CruiseState,
+		AutosteerState:     data.AutosteerState,
+		CruiseControlState: data.CruiseControlState,
 	}, "manual_refresh")
 
 	return data, nil

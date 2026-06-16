@@ -1,6 +1,7 @@
 package state
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -58,9 +59,10 @@ type OnlineStateOutput struct {
 }
 
 type DriveStateOutput struct {
-	DriveState DriveStateType `json:"drive_state"`
-	Speed      float64        `json:"speed"`
-	Gear       string         `json:"gear"`
+	DriveState    DriveStateType `json:"drive_state"`
+	Speed         float64        `json:"speed"`
+	Gear          string         `json:"gear"`
+	AutopilotState string        `json:"autopilot_state"`
 }
 
 type LockStateOutput struct {
@@ -100,15 +102,18 @@ type VehicleStateOutput struct {
 }
 
 type VehicleDataInput struct {
-	Speed          float64
-	Gear           string
-	ChargingState  string
-	Supercharging  bool
-	Soc            int
-	ChargePower    float64
-	MinutesToFull  int
-	Locked         bool
-	DoorOpen       bool
+	Speed              float64
+	Gear               string
+	ChargingState      string
+	Supercharging      bool
+	Soc                int
+	ChargePower        float64
+	MinutesToFull      int
+	Locked             bool
+	DoorOpen           bool
+	CruiseState        string
+	AutosteerState     string
+	CruiseControlState string
 }
 
 type stateHistory struct {
@@ -131,6 +136,20 @@ type stateHistory struct {
 	lastCommand         string
 	commandLatencyMs    int64
 	commandStartedAt    time.Time
+
+	// 持久化的车辆状态字段（增量更新，只覆盖实际推送的字段）
+	lastGear           string
+	lastSpeed           float64
+	lastChargingState   string
+	lastSupercharging   bool
+	lastSoc             int
+	lastChargePower     float64
+	lastMinutesToFull   int
+	lastLocked          bool
+	lastDoorOpen        bool
+	lastCruiseState     string
+	lastAutosteerState  string
+	lastCruiseCtrlState string
 }
 
 var (
@@ -283,14 +302,179 @@ func deriveLockState(input *VehicleDataInput) string {
 	return "unlocked"
 }
 
+func deriveAutopilotState(input *VehicleDataInput) string {
+	// 优先使用 autosteer_state + cruise_control_state 组合判断
+	if input.AutosteerState != "" {
+		switch strings.ToLower(input.AutosteerState) {
+		case "active":
+			return "Enabled"
+		case "standby":
+			return "Standby"
+		case "disabled", "unavailable":
+			return "Disabled"
+		}
+	}
+	// 降级使用 cruise_control_state
+	if input.CruiseControlState != "" {
+		switch strings.ToLower(input.CruiseControlState) {
+		case "active":
+			return "Enabled"
+		case "standby", "available":
+			return "Standby"
+		case "disabled", "unavailable":
+			return "Disabled"
+		}
+	}
+	// 最终降级使用 cruise_state（旧字段）
+	switch strings.ToLower(input.CruiseState) {
+	case "enabled", "active":
+		return "Enabled"
+	case "standby", "available":
+		return "Standby"
+	default:
+		return "Disabled"
+	}
+}
+
 func UpdateFromFullData(vin string, input *VehicleDataInput, source string) *VehicleStateOutput {
 	e := getEngine(vin)
 	recordSuccess(e)
 
+	// 增量合并：只覆盖非零值，保留上次已知的值
+	e.mergeInput(input)
+
 	onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
 	e.proposeState(onlineState, source)
 
-	return buildOutput(e, input)
+	return buildOutput(e, e.buildInput())
+}
+
+// UpdateFromTelemetry 从遥测数据增量更新状态引擎
+// fields 是本次遥测推送的字段（只包含变化的字段），未包含的字段保持上次已知值
+func UpdateFromTelemetry(vin string, fields map[string]interface{}) *VehicleStateOutput {
+	e := getEngine(vin)
+	recordSuccess(e)
+
+	// 增量更新持久化字段
+	e.mergeFields(fields)
+
+	onlineState := deriveOnlineState(e.lastSuccessAt, calcConfidence(e))
+	e.proposeState(onlineState, "telemetry")
+
+	return buildOutput(e, e.buildInput())
+}
+
+// mergeInput 增量合并 VehicleDataInput（REST API 路径）
+func (e *stateHistory) mergeInput(input *VehicleDataInput) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if input.Speed != 0 {
+		e.lastSpeed = input.Speed
+	}
+	if input.Gear != "" {
+		e.lastGear = input.Gear
+	}
+	if input.ChargingState != "" {
+		e.lastChargingState = input.ChargingState
+	}
+	if input.Supercharging {
+		e.lastSupercharging = true
+	} else if input.ChargingState != "" {
+		// 只有当充电状态也更新了，才清除 supercharging 标记
+		e.lastSupercharging = false
+	}
+	if input.Soc != 0 {
+		e.lastSoc = input.Soc
+	}
+	if input.ChargePower != 0 {
+		e.lastChargePower = input.ChargePower
+	}
+	if input.MinutesToFull != 0 {
+		e.lastMinutesToFull = input.MinutesToFull
+	}
+	if input.Locked {
+		e.lastLocked = true
+	} else if input.Gear != "" || input.Speed != 0 {
+		// 只有当有其他驾驶数据一起推送时才更新锁车状态
+		// 避免增量推送时误覆盖
+		e.lastLocked = false
+	}
+	if input.DoorOpen {
+		e.lastDoorOpen = true
+	} else if input.Gear != "" || input.Speed != 0 {
+		e.lastDoorOpen = false
+	}
+	if input.CruiseState != "" {
+		e.lastCruiseState = input.CruiseState
+	}
+	if input.AutosteerState != "" {
+		e.lastAutosteerState = input.AutosteerState
+	}
+	if input.CruiseControlState != "" {
+		e.lastCruiseCtrlState = input.CruiseControlState
+	}
+}
+
+// mergeFields 增量合并遥测字段（遥测路径）
+func (e *stateHistory) mergeFields(fields map[string]interface{}) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if v, ok := fields["speed"].(float64); ok {
+		e.lastSpeed = v
+	}
+	if v, ok := fields["gear"].(string); ok && v != "" {
+		e.lastGear = v
+	}
+	if v, ok := fields["charging_state"].(string); ok && v != "" {
+		e.lastChargingState = v
+	}
+	if v, ok := fields["charge_state"].(string); ok && v != "" {
+		e.lastChargingState = v
+	}
+	if v, ok := fields["fast_charger_present"].(bool); ok {
+		e.lastSupercharging = v
+	}
+	if v, ok := fields["soc"].(float64); ok {
+		e.lastSoc = int(v)
+	}
+	if v, ok := fields["charge_power"].(float64); ok {
+		e.lastChargePower = v
+	}
+	if v, ok := fields["dc_charging_power"].(float64); ok {
+		e.lastChargePower = v
+	}
+	if v, ok := fields["minutes_to_full"].(float64); ok {
+		e.lastMinutesToFull = int(v)
+	}
+	if v, ok := fields["locked"].(bool); ok {
+		e.lastLocked = v
+	}
+	if v, ok := fields["door_open"].(bool); ok {
+		e.lastDoorOpen = v
+	}
+}
+
+// buildInput 从持久化字段构建 VehicleDataInput
+func (e *stateHistory) buildInput() *VehicleDataInput {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return &VehicleDataInput{
+		Speed:              e.lastSpeed,
+		Gear:               e.lastGear,
+		ChargingState:      e.lastChargingState,
+		Supercharging:      e.lastSupercharging,
+		Soc:                e.lastSoc,
+		ChargePower:        e.lastChargePower,
+		MinutesToFull:      e.lastMinutesToFull,
+		Locked:             e.lastLocked,
+		DoorOpen:           e.lastDoorOpen,
+		CruiseState:        e.lastCruiseState,
+		AutosteerState:     e.lastAutosteerState,
+		CruiseControlState: e.lastCruiseCtrlState,
+	}
 }
 
 func UpdateFromLightweight(vin string, apiState string, online bool, source string) *VehicleStateOutput {
@@ -347,7 +531,11 @@ func RecordCommandResult(vin string, success bool) {
 
 func GetOutput(vin string, input *VehicleDataInput) *VehicleStateOutput {
 	e := getEngine(vin)
-	return buildOutput(e, input)
+	// 如果 input 提供了值，先合并
+	if input != nil {
+		e.mergeInput(input)
+	}
+	return buildOutput(e, e.buildInput())
 }
 
 func buildOutput(e *stateHistory, input *VehicleDataInput) *VehicleStateOutput {
@@ -362,9 +550,10 @@ func buildOutput(e *stateHistory, input *VehicleDataInput) *VehicleStateOutput {
 			ChangedAt:   e.stateChangedAt.Unix(),
 		},
 		Drive: DriveStateOutput{
-			DriveState: deriveDriveState(input),
-			Speed:      input.Speed,
-			Gear:       input.Gear,
+			DriveState:     deriveDriveState(input),
+			Speed:          input.Speed,
+			Gear:           input.Gear,
+			AutopilotState: deriveAutopilotState(input),
 		},
 		Lock: LockStateOutput{
 			LockState: deriveLockState(input),
@@ -403,9 +592,10 @@ func buildOutputLightweight(e *stateHistory, apiState string, online bool) *Vehi
 			ChangedAt:   e.stateChangedAt.Unix(),
 		},
 		Drive: DriveStateOutput{
-			DriveState: DriveStateParked,
-			Speed:      0,
-			Gear:       "P",
+			DriveState:     DriveStateParked,
+			Speed:          0,
+			Gear:           "P",
+			AutopilotState: "Disabled",
 		},
 		Lock: LockStateOutput{
 			LockState: "locked",

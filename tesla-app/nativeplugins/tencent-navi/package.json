@@ -1,0 +1,44 @@
+{
+    "id": "tencent-navi",
+    "name": "腾讯地图导航",
+    "version": "1.0.0",
+    "description": "腾讯地图导航原生插件 - 支持地图显示、路线规划、导航、语音播报",
+    "_dp_type": "nativeplugin",
+    "_dp_nativeplugin": {
+        "android": {
+            "plugins": [
+                {
+                    "type": "module",
+                    "name": "tencent-navi",
+                    "class": "com.tencent.navi.plugin.TencentNaviModule"
+                },
+                {
+                    "type": "component",
+                    "name": "tencent-navi-map",
+                    "class": "com.tencent.navi.plugin.TencentNaviMapComponent"
+                }
+            ],
+            "integrateType": "aar",
+            "dependencies": [
+                "com.tencent.map:tencent-map-nav-sdk-core:7.7.1",
+                "com.tencent.map:tencent-map-nav-sdk-tts:7.7.0",
+                "com.tencent.openmap:foundation:0.9.0.e5ea763-lite",
+                "androidx.constraintlayout:constraintlayout:2.1.4"
+            ],
+            "repositories": [
+                "https://mirrors.tencent.com/nexus/repository/maven/public/",
+                "https://mirrors.tencent.com/repository/maven/tencent_public/",
+                "https://oss.sonatype.org/content/groups/public/",
+                "https://repo1.maven.org/maven2/"
+            ],
+            "abi": ["arm64-v8a"],
+            "minSdkVersion": "21",
+            "permissions": [
+                "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+                "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                "<uses-permission android:name=\"android.permission.INTERNET\"/>"
+            ]
+        }
+    }
+}

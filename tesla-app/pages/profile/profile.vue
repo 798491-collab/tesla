@@ -57,6 +57,24 @@
               <text class="menu-value">本地视频+GPS融合</text>
               <Icon name="ChevronForward" :size="16" themeColor="chevron" />
             </view>
+            <view class="menu-divider"></view>
+            <view class="menu-item" @click="goBattery">
+              <view class="menu-icon-wrap battery-icon">
+                <Icon name="BatteryFull" :size="22" color="#22C55E" />
+              </view>
+              <text class="menu-label">电池数据</text>
+              <text class="menu-value">电池状态实时监控</text>
+              <Icon name="ChevronForward" :size="16" themeColor="chevron" />
+            </view>
+            <view class="menu-divider"></view>
+            <view class="menu-item" @click="editLicensePlate">
+              <view class="menu-icon-wrap plate-icon">
+                <Icon name="Car" :size="22" color="#3B82F6" />
+              </view>
+              <text class="menu-label">车牌号码</text>
+              <text class="menu-value">{{ licensePlate || '未设置' }}</text>
+              <Icon name="ChevronForward" :size="16" themeColor="chevron" />
+            </view>
           </view>
         </view>
 
@@ -80,6 +98,15 @@
               </view>
               <text class="menu-label">主题模式</text>
               <text class="menu-value">{{ themeModeLabel }}</text>
+              <Icon name="ChevronForward" :size="16" themeColor="chevron" />
+            </view>
+            <view class="menu-divider"></view>
+            <view class="menu-item" @click="goMapSettings">
+              <view class="menu-icon-wrap">
+                <Icon name="Location" :size="22" themeColor="primary" />
+              </view>
+              <text class="menu-label">地图设置</text>
+              <text class="menu-value">{{ mapTypeLabel }}</text>
               <Icon name="ChevronForward" :size="16" themeColor="chevron" />
             </view>
           </view>
@@ -130,10 +157,14 @@ import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
 import { useDashboardStore } from '@/store/dashboard'
+import { useMapSettingsStore } from '@/store/map-settings'
+import { useVehicleStore } from '@/store/vehicle'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const themeStore = useThemeStore()
 const dashboardStore = useDashboardStore()
+const mapSettingsStore = useMapSettingsStore()
+const vehicleStore = useVehicleStore()
 const themeClass = computed(() => themeStore.themeClass)
 
 const userInfo = ref({})
@@ -169,8 +200,35 @@ const dashboardLabel = computed(() => {
   return dashboardStore.currentDashboard?.label || '经典仪表盘'
 })
 
+const mapTypeLabel = computed(() => mapSettingsStore.mapStyleLabel)
+
+const licensePlate = computed(() => {
+  const vin = vehicleStore.currentVehicle?.vin
+  return vin ? vehicleStore.getLicensePlate(vin) : ''
+})
+
+const editLicensePlate = () => {
+  const vin = vehicleStore.currentVehicle?.vin
+  if (!vin) {
+    uni.showToast({ title: '请先选择车辆', icon: 'none' })
+    return
+  }
+  const current = vehicleStore.getLicensePlate(vin)
+  uni.showModal({
+    title: '设置车牌号码',
+    editable: true,
+    placeholderText: '如：沪A·12345',
+    content: current,
+    success: (res) => {
+      if (res.confirm && res.content !== undefined) {
+        vehicleStore.setLicensePlate(vin, res.content.trim())
+      }
+    }
+  })
+}
+
 const showDashboardPicker = () => {
-  const list = dashboardStore.dashboardList.map(d => d.label + ' - ' + d.desc)
+  const list = dashboardStore.dashboardList.map(d => d.label)
   const currentIndex = dashboardStore.dashboardList.findIndex(d => d.key === dashboardStore.dashboardType)
   uni.showActionSheet({
     itemList: list,
@@ -212,6 +270,14 @@ const bleDebug = () => {
 
 const goDashcam = () => {
   uni.navigateTo({ url: '/pages/dashcam/index' })
+}
+
+const goBattery = () => {
+  uni.navigateTo({ url: '/pages/battery/battery' })
+}
+
+const goMapSettings = () => {
+  uni.navigateTo({ url: '/pages/profile/map-settings' })
 }
 
 const logout = () => {
@@ -371,6 +437,14 @@ const logout = () => {
 
   &.dashcam-icon {
     background: rgba(91, 231, 196, 0.12);
+  }
+
+  &.battery-icon {
+    background: rgba(34, 197, 94, 0.12);
+  }
+
+  &.plate-icon {
+    background: rgba(59, 130, 246, 0.12);
   }
 }
 

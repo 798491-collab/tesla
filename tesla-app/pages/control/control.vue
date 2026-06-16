@@ -300,7 +300,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
-import { getUserVehicles, getVehicleState, wakeVehicle, getPairingURL, getFleetStatus } from '@/api/vehicle.js'
+import { getUserVehicles, wakeVehicle, getPairingURL, getFleetStatus } from '@/api/vehicle.js'
 import {
   doorLock, doorUnlock,
   autoConditioningStart, autoConditioningStop,
@@ -457,23 +457,8 @@ const sendCommand = (command) => {
   if (command === 'wake') {
     uni.showLoading({ title: '唤醒中...' })
     wakeVehicle(selectedVIN.value).then(() => {
-      uni.showLoading({ title: '等待车辆上线...' })
-      const checkOnline = (retries) => {
-        if (retries <= 0) {
-          uni.hideLoading()
-          uni.showToast({ title: '唤醒命令已发送，请稍后刷新查看', icon: 'none' })
-          return
-        }
-        setTimeout(() => {
-          if (vehicleOnline.value) {
-            uni.hideLoading()
-            uni.showToast({ title: '车辆已上线', icon: 'success' })
-          } else {
-            checkOnline(retries - 1)
-          }
-        }, 3000)
-      }
-      checkOnline(10)
+      uni.hideLoading()
+      uni.showToast({ title: '唤醒命令已发送，等待车辆上线...', icon: 'none', duration: 3000 })
     }).catch((err) => {
       uni.hideLoading()
       uni.showToast({ title: err.message || '唤醒失败', icon: 'none' })

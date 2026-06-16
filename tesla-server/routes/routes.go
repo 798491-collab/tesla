@@ -76,6 +76,7 @@ func Setup(r *gin.Engine) {
 			authorized.GET("/tesla/vehicles", tesla.GetUserVehicles)
 			authorized.GET("/tesla/vehicle/:vin/detail", tesla.GetVehicleDetail)
 			authorized.GET("/tesla/vehicle/:vin/fleet-status", tesla.GetFleetStatus)
+			authorized.GET("/tesla/vehicle/:vin/fleet-telemetry-errors", tesla.GetFleetTelemetryErrors)
 			authorized.GET("/tesla/vehicle/:vin/pairing-url", tesla.GetVirtualKeyPairingURL)
 			authorized.DELETE("/tesla/unbind/:vin", handleUnbindVehicle)
 			authorized.POST("/tesla/refresh-vehicle-info", tesla.RefreshVehicleInfo)

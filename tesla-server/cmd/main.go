@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -38,32 +39,31 @@ func main() {
 
 	cfg := config.Load()
 
+	// 证书同步：从宝塔证书目录和 VCP 密钥目录同步到 certs 目录
+	if cfg.Telemetry.Enabled && cfg.Telemetry.CertSync.Enabled {
+		syncCerts(cfg)
+	}
+
 	gin.SetMode(cfg.Server.Mode)
 
 	if err := database.Init(&cfg.Database); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	log.Println("Database connected successfully")
 
 	if err := redis.Init(&cfg.Redis); err != nil {
 		log.Fatalf("Failed to initialize redis: %v", err)
 	}
-	log.Println("Redis connected successfully")
 
 	auth.Init(&cfg.JWT)
-
 	polling.Init()
-	log.Println("Vehicle polling service started")
-
 	ws.InitHub()
-	log.Println("WebSocket hub started")
 
 	if cfg.Telemetry.Enabled {
 		var privKeyPEM []byte
 		if cfg.Telemetry.PrivateKey != "" {
 			keyData, err := os.ReadFile(cfg.Telemetry.PrivateKey)
 			if err != nil {
-				log.Printf("Warning: failed to read telemetry private key file %s: %v", cfg.Telemetry.PrivateKey, err)
+				log.Printf("[Startup] Private key file not found: %s (%v)", cfg.Telemetry.PrivateKey, err)
 			} else {
 				privKeyPEM = keyData
 			}
@@ -76,9 +76,23 @@ func main() {
 			cfg.Telemetry.CACertFile,
 			cfg.Telemetry.UseDefaultEngCA,
 		); err != nil {
-			log.Fatalf("Failed to start telemetry server: %v", err)
+			log.Fatalf("[Startup] Fleet Telemetry server failed: %v", err)
 		}
-		log.Println("Fleet Telemetry server started on", cfg.Telemetry.ListenAddr)
+
+		// telemetry.InitWriter() // 已关闭数据库写入
+		// defer telemetry.StopWriter()
+
+		// 检查 TLS 证书
+		if cfg.Telemetry.TLSCertFile != "" {
+			if _, err := os.Stat(cfg.Telemetry.TLSCertFile); err != nil {
+				log.Printf("[Startup] TLS cert not found: %s", cfg.Telemetry.TLSCertFile)
+			}
+		}
+		if cfg.Telemetry.TLSKeyFile != "" {
+			if _, err := os.Stat(cfg.Telemetry.TLSKeyFile); err != nil {
+				log.Printf("[Startup] TLS key not found: %s", cfg.Telemetry.TLSKeyFile)
+			}
+		}
 
 		// 延迟 10 秒后自动为已绑定车辆配置 Fleet Telemetry
 		go func() {
@@ -100,24 +114,16 @@ func main() {
 				return
 			}
 
-			// 收集所有 VIN
 			vins := make([]string, 0, len(vehicles))
 			for _, v := range vehicles {
 				vins = append(vins, v.VIN)
 			}
 
-			log.Printf("[Telemetry Auto-Config] Configuring Fleet Telemetry for %d vehicles: %v", len(vins), vins)
-
-			// 获取任意一个车辆的 access token（这里简化处理，实际应该按用户分组）
-			// 由于 ConfigureFleetTelemetry 需要 accessToken，我们需要从数据库获取
-			// 简化方案：遍历每个车辆，获取其用户的 token 并配置
-
 			configuredCount := 0
 			for _, vehicle := range vehicles {
-				// 获取该车辆所属用户的 token
 				var account models.TeslaOAuthAccount
 				if err := database.DB.Where("user_id = ? AND tesla_uid = ?", vehicle.UserID, vehicle.TeslaUID).First(&account).Error; err != nil {
-					log.Printf("[Telemetry Auto-Config] Failed to get account for VIN %s: %v", vehicle.VIN, err)
+					log.Printf("[Telemetry Auto-Config] No account for VIN %s: %v", vehicle.VIN, err)
 					continue
 				}
 
@@ -126,28 +132,23 @@ func main() {
 					continue
 				}
 
-				// 配置单个车辆，传入 CA 证书路径（使用 TLS 证书文件，包含证书链）
 				resp, err := fleet.ConfigureFleetTelemetry(account.AccessToken, []string{vehicle.VIN}, cfg.Telemetry.Hostname, cfg.Telemetry.TLSCertFile)
 				if err != nil {
-					log.Printf("[Telemetry Auto-Config] Failed to configure VIN %s: %v", vehicle.VIN, err)
+					log.Printf("[Telemetry Auto-Config] Failed VIN %s: %v", vehicle.VIN, err)
 					continue
 				}
 
 				if len(resp.Response.SuccessfulVINs) > 0 || resp.Response.UpdatedVehicles > 0 {
-					log.Printf("[Telemetry Auto-Config] Successfully configured VIN %s", vehicle.VIN)
 					configuredCount++
-				} else if len(resp.Response.SkippedVINs) > 0 {
-					log.Printf("[Telemetry Auto-Config] VIN %s skipped (already configured or not supported)", vehicle.VIN)
 				}
 
-				// 避免请求过快
 				time.Sleep(500 * time.Millisecond)
 			}
 
-			log.Printf("[Telemetry Auto-Config] Completed: %d/%d vehicles configured", configuredCount, len(vehicles))
+			log.Printf("[Telemetry Auto-Config] Completed: %d/%d vehicles", configuredCount, len(vehicles))
 		}()
 	} else {
-		log.Println("Fleet Telemetry server disabled (TELEMETRY_ENABLED not set)")
+		log.Println("[Startup] Fleet Telemetry disabled")
 	}
 
 	go func() {
@@ -156,7 +157,6 @@ func main() {
 			next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 5, 0, now.Location())
 			time.Sleep(next.Sub(now))
 			logger.Rotate()
-			log.Println("Log file rotated")
 		}
 	}()
 
@@ -168,10 +168,8 @@ func main() {
 				next = next.AddDate(0, 0, 1)
 			}
 			time.Sleep(next.Sub(now))
-			log.Println("[AI Cron] Starting daily vehicle analysis...")
 			var vehicles []models.TeslaVehicle
 			if err := database.DB.Where("bind_status = 1").Find(&vehicles).Error; err != nil {
-				log.Printf("[AI Cron] Failed to query vehicles: %v", err)
 				continue
 			}
 			for _, v := range vehicles {
@@ -179,42 +177,33 @@ func main() {
 				go ai.RunVehicleAnalysis(v.VIN, v.UserID, today)
 				time.Sleep(3 * time.Second)
 			}
-			log.Printf("[AI Cron] Daily vehicle analysis triggered for %d vehicles", len(vehicles))
 		}
 	}()
 
-	// 月度分析定时任务：每月1号凌晨0:10自动分析上月数据
 	go func() {
 		for {
 			now := time.Now()
-			// 下一个1号的0:10
 			next := time.Date(now.Year(), now.Month()+1, 1, 0, 10, 0, 0, now.Location())
 			if now.Day() == 1 && now.Hour() == 0 && now.Minute() < 15 {
-				// 如果当前就是1号0点刚过，直接执行
 				next = now
 			}
 			time.Sleep(next.Sub(now))
 
-			log.Println("[AI Cron] Starting monthly analysis...")
 			var vehicles []models.TeslaVehicle
 			if err := database.DB.Where("bind_status = 1").Find(&vehicles).Error; err != nil {
-				log.Printf("[AI Cron] Failed to query vehicles: %v", err)
 				continue
 			}
 
 			lastMonth := time.Now().AddDate(0, -1, 0).Format("2006-01")
 			for _, v := range vehicles {
-				// 月度行程分析
 				tripRefID := fmt.Sprintf("trip_monthly:%s", lastMonth)
 				go ai.RunTripAnalysis(v.VIN, v.UserID, tripRefID)
 				time.Sleep(2 * time.Second)
 
-				// 月度充电分析
 				chargingRefID := fmt.Sprintf("charging_monthly:%s", lastMonth)
 				go ai.RunChargingAnalysis(v.VIN, v.UserID, chargingRefID)
 				time.Sleep(2 * time.Second)
 			}
-			log.Printf("[AI Cron] Monthly analysis triggered for %d vehicles (month: %s)", len(vehicles), lastMonth)
 		}
 	}()
 
@@ -222,8 +211,70 @@ func main() {
 	routes.Setup(r)
 
 	addr := ":" + cfg.Server.Port
-	log.Printf("Server starting on %s", addr)
+	log.Printf("[Startup] Server listening on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// syncCerts 从宝塔证书目录和 VCP 密钥目录同步证书到 certs 目录
+func syncCerts(cfg *config.Config) {
+	cs := cfg.Telemetry.CertSync
+
+	// 自动推导 certs 目录：与可执行文件同目录下的 certs/
+	execPath, _ := os.Executable()
+	appDir := filepath.Dir(execPath)
+	certsDir := cs.CertsDir
+	if certsDir == "" {
+		certsDir = filepath.Join(appDir, "certs")
+	}
+
+	os.MkdirAll(certsDir, 0755)
+
+	// 同步 VCP 私钥
+	if cs.VCPKeysDir != "" {
+		syncIfNewer(filepath.Join(cs.VCPKeysDir, "private.pem"), filepath.Join(certsDir, "private.pem"))
+	}
+
+	// 同步宝塔 TLS 证书
+	if cs.CertSrcDir != "" {
+		syncIfNewer(filepath.Join(cs.CertSrcDir, "fullchain.pem"), filepath.Join(certsDir, "fullchain.pem"))
+		syncIfNewer(filepath.Join(cs.CertSrcDir, "privkey.pem"), filepath.Join(certsDir, "privkey.pem"))
+	}
+}
+
+// syncIfNewer 仅在源文件比目标文件新时复制
+func syncIfNewer(src, dst string) {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		log.Printf("[cert-sync] Source not found: %s", src)
+		return
+	}
+
+	dstInfo, dstErr := os.Stat(dst)
+	if dstErr == nil && !srcInfo.ModTime().After(dstInfo.ModTime()) {
+		return // 目标已存在且不旧，跳过
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		log.Printf("[cert-sync] Failed to open %s: %v", src, err)
+		return
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		log.Printf("[cert-sync] Failed to create %s: %v", dst, err)
+		return
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		log.Printf("[cert-sync] Failed to copy %s -> %s: %v", src, dst, err)
+		return
+	}
+
+	os.Chmod(dst, 0644)
+	log.Printf("[cert-sync] Synced: %s -> %s", src, dst)
 }

@@ -715,6 +715,35 @@ func GetFleetStatus(c *gin.Context) {
 	})
 }
 
+// GetFleetTelemetryErrors 查询车辆遥测连接错误（Tesla 官方推荐排查手段）
+func GetFleetTelemetryErrors(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	vin := c.Param("vin")
+
+	var vehicle models.TeslaVehicle
+	if err := database.DB.Where("user_id = ? AND vin = ? AND bind_status = 1", userID, vin).First(&vehicle).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "Vehicle not found"})
+		return
+	}
+
+	var oauthAccount models.TeslaOAuthAccount
+	if err := database.DB.Where("user_id = ? AND tesla_uid = ?", userID, vehicle.TeslaUID).First(&oauthAccount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "OAuth account not found"})
+		return
+	}
+
+	errors, err := fleet.GetFleetTelemetryErrors(oauthAccount.AccessToken, vin)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"data": errors,
+	})
+}
+
 func UnbindVehicle(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	vin := c.Param("vin")

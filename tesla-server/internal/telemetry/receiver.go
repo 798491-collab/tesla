@@ -13,13 +13,13 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
-	"tesla-server/internal/fleet"
 	"tesla-server/internal/geo"
 	"tesla-server/internal/redis"
+	"tesla-server/internal/state"
 	"tesla-server/internal/ws"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/teslamotors/fleet-telemetry/messages"
@@ -35,7 +35,7 @@ var defaultEngCA []byte
 
 var (
 	mediaMu     sync.RWMutex
-	latestMedia = make(map[string]*fleet.MediaStateData)
+	latestMedia = make(map[string]map[string]interface{})
 	server      *http.Server
 	privateKey  *ecdsa.PrivateKey
 
@@ -55,15 +55,15 @@ func InitTelemetryServer(addr string, privKeyPEM []byte, tlsCertFile string, tls
 	if len(privKeyPEM) > 0 {
 		key, err := parseECPrivateKey(privKeyPEM)
 		if err != nil {
-			log.Printf("[Telemetry] Warning: failed to parse private key: %v, running without message verification", err)
+			log.Printf("[Telemetry] Private key parse failed: %v", err)
 		} else {
 			privateKey = key
-			log.Printf("[Telemetry] Private key loaded for message verification")
 		}
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/1/vehicles/", handleTelemetry)
+	mux.HandleFunc("/", handleTelemetryRoot)
 
 	server = &http.Server{
 		Addr:    addr,
@@ -81,10 +81,8 @@ func InitTelemetryServer(addr string, privKeyPEM []byte, tlsCertFile string, tls
 		var defaultCA []byte
 		if useDefaultEngCA {
 			defaultCA = defaultEngCA
-			log.Printf("[Telemetry] Using embedded Tesla engineering CA (eng_ca.crt)")
 		} else {
 			defaultCA = defaultProdCA
-			log.Printf("[Telemetry] Using embedded Tesla production CA (prod_ca.crt)")
 		}
 		if !caCertPool.AppendCertsFromPEM(defaultCA) {
 			return fmt.Errorf("failed to append embedded default CA cert to pool")
@@ -98,7 +96,6 @@ func InitTelemetryServer(addr string, privKeyPEM []byte, tlsCertFile string, tls
 			if !caCertPool.AppendCertsFromPEM(customCaBytes) {
 				return fmt.Errorf("failed to append custom CA cert to pool")
 			}
-			log.Printf("[Telemetry] Appended custom CA cert: %s", caCertFile)
 		}
 
 		tlsConfig := &tls.Config{
@@ -115,14 +112,14 @@ func InitTelemetryServer(addr string, privKeyPEM []byte, tlsCertFile string, tls
 			caMode = "eng"
 		}
 		go func() {
-			log.Printf("[Telemetry] mTLS server starting on %s (cert=%s, ca_mode=%s, custom_ca=%s)", addr, tlsCertFile, caMode, caCertFile)
+			log.Printf("[Telemetry] mTLS server listening on %s (ca=%s)", addr, caMode)
 			if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				log.Printf("[Telemetry] Server error: %v", err)
 			}
 		}()
 	} else {
 		go func() {
-			log.Printf("[Telemetry] HTTP server starting on %s (no TLS - for development only)", addr)
+			log.Printf("[Telemetry] HTTP server listening on %s (no TLS)", addr)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Printf("[Telemetry] Server error: %v", err)
 			}
@@ -132,38 +129,39 @@ func InitTelemetryServer(addr string, privKeyPEM []byte, tlsCertFile string, tls
 	return nil
 }
 
-func handleTelemetry(w http.ResponseWriter, r *http.Request) {
-	pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(pathParts) < 4 {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-	vin := pathParts[3]
-
+// handleTelemetryRoot 处理车辆直接连接根路径的遥测请求
+// Tesla 车辆通过 mTLS WebSocket 连接 wss://hostname:8443/，路径为根路径
+// VIN 从 mTLS 客户端证书中提取
+func handleTelemetryRoot(w http.ResponseWriter, r *http.Request) {
+	// 从 mTLS 客户端证书提取 VIN
+	var vin string
 	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 		clientType, deviceID, err := messages.CreateIdentityFromCert(r.TLS.PeerCertificates[0])
 		if err != nil {
-			log.Printf("[Telemetry] Failed to extract identity from client cert: %v", err)
+			log.Printf("[Telemetry] [mTLS] Cert identity extract failed: %v", err)
 			http.Error(w, "invalid client certificate", http.StatusForbidden)
 			return
 		}
-		if deviceID != vin {
-			log.Printf("[Telemetry] VIN mismatch: URL=%s, Cert=%s (clientType=%s)", vin, deviceID, clientType)
-			http.Error(w, "VIN mismatch", http.StatusForbidden)
-			return
-		}
+		vin = deviceID
+		log.Printf("[Telemetry] [mTLS] Cert verified: VIN=%s, type=%s, path=%s", vin, clientType, r.URL.Path)
+	} else {
+		log.Printf("[Telemetry] No client cert, path=%s", r.URL.Path)
+		http.Error(w, "client certificate required", http.StatusForbidden)
+		return
 	}
 
+	// WebSocket 升级
 	if isWebSocketRequest(r) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("[Telemetry] WebSocket upgrade failed for %s: %v", vin, err)
+			log.Printf("[Telemetry] [WS] Upgrade failed for %s: %v", vin, err)
 			return
 		}
 		handleTelemetryWS(vin, conn)
 		return
 	}
 
+	// HTTP POST
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -171,12 +169,70 @@ func handleTelemetry(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("[Telemetry] Failed to read body for %s: %v", vin, err)
+		log.Printf("[Telemetry] [HTTP] Read body failed for %s: %v", vin, err)
 		http.Error(w, "read error", http.StatusInternalServerError)
 		return
 	}
 	defer r.Body.Close()
 
+	log.Printf("[Telemetry] [HTTP] Received POST for %s, body_len=%d", vin, len(body))
+	processRawPayload(vin, body)
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleTelemetry(w http.ResponseWriter, r *http.Request) {
+	pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(pathParts) < 4 {
+		log.Printf("[Telemetry] Invalid path: %s", r.URL.Path)
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	vin := pathParts[3]
+
+	// 节点1: mTLS 客户端证书验证
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		clientType, deviceID, err := messages.CreateIdentityFromCert(r.TLS.PeerCertificates[0])
+		if err != nil {
+			log.Printf("[Telemetry] [mTLS] Cert identity extract failed for %s: %v", vin, err)
+			http.Error(w, "invalid client certificate", http.StatusForbidden)
+			return
+		}
+		if deviceID != vin {
+			log.Printf("[Telemetry] [mTLS] VIN mismatch: URL=%s, Cert=%s (type=%s)", vin, deviceID, clientType)
+			http.Error(w, "VIN mismatch", http.StatusForbidden)
+			return
+		}
+		log.Printf("[Telemetry] [mTLS] Cert verified: VIN=%s, type=%s", vin, clientType)
+	} else if r.TLS != nil {
+		log.Printf("[Telemetry] [mTLS] No client cert for VIN=%s (TLS connection without peer cert)", vin)
+	}
+
+	// 节点2: WebSocket 升级判断
+	if isWebSocketRequest(r) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("[Telemetry] [WS] Upgrade failed for %s: %v", vin, err)
+			return
+		}
+		handleTelemetryWS(vin, conn)
+		return
+	}
+
+	// 节点3: HTTP POST 请求处理
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("[Telemetry] [HTTP] Read body failed for %s: %v", vin, err)
+		http.Error(w, "read error", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	log.Printf("[Telemetry] [HTTP] Received POST for %s, body_len=%d", vin, len(body))
 	processRawPayload(vin, body)
 	w.WriteHeader(http.StatusOK)
 }
@@ -190,6 +246,9 @@ func handleTelemetryWS(vin string, conn *websocket.Conn) {
 	activeConns[vin] = conn
 	activeConnsMu.Unlock()
 
+	// 节点4: WebSocket 连接建立
+	log.Printf("[Telemetry] [WS] Connected: VIN=%s, remote=%s", vin, conn.RemoteAddr())
+
 	redis.SetVehicleStatus(vin, &redis.VehicleStatus{
 		Online: true,
 		Source: "telemetry",
@@ -200,7 +259,7 @@ func handleTelemetryWS(vin string, conn *websocket.Conn) {
 		activeConnsMu.Lock()
 		delete(activeConns, vin)
 		activeConnsMu.Unlock()
-		log.Printf("[Telemetry] WebSocket disconnected for VIN: %s", vin)
+		log.Printf("[Telemetry] [WS] Disconnected: VIN=%s", vin)
 
 		// 通知前端遥测断开，车辆可能已睡眠
 		redis.SetVehicleStatus(vin, &redis.VehicleStatus{
@@ -216,81 +275,136 @@ func handleTelemetryWS(vin string, conn *websocket.Conn) {
 		})
 	}()
 
-	log.Printf("[Telemetry] WebSocket connection established for VIN: %s", vin)
-
+	msgCount := 0
 	for {
 		messageType, payload, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				log.Printf("[Telemetry] WebSocket unexpected close for %s: %v", vin, err)
+				log.Printf("[Telemetry] [WS] Unexpected close for %s: %v", vin, err)
 			} else {
-				log.Printf("[Telemetry] WebSocket closed for %s: %v", vin, err)
+				log.Printf("[Telemetry] [WS] Disconnected: VIN=%s (total_msgs=%d)", vin, msgCount)
 			}
 			break
 		}
 
+		msgCount++
+
+		// 节点5: WebSocket 消息接收
 		if messageType == websocket.BinaryMessage {
 			go processRawPayload(vin, payload)
+		} else {
+			log.Printf("[Telemetry] [WS] Non-binary message for %s: type=%d, len=%d", vin, messageType, len(payload))
 		}
 	}
 }
 
 func processRawPayload(vin string, body []byte) {
-	var payload protos.Payload
-	if err := proto.Unmarshal(body, &payload); err != nil {
-		log.Printf("[Telemetry] Failed to unmarshal protobuf for %s: %v (body_len=%d)", vin, err, len(body))
-		handleJSONTelemetry(vin, body)
+	// 节点6: 原始数据解码
+	// Tesla 官方 fleet-telemetry 使用 Flatbuffers 封装格式
+	// 通过 messages.StreamMessageFromBytes 解析信封，提取 MessageTopic 和 Payload
+	if len(body) == 0 {
 		return
 	}
 
-	processProtobufTelemetry(vin, &payload)
+	streamMsg, err := messages.StreamMessageFromBytes(body)
+	if err != nil {
+		log.Printf("[Telemetry] [Decode] StreamMessage parse failed for %s: %v (body_len=%d), hex=% x", vin, err, len(body), body[:min(len(body), 20)])
+		return
+	}
+
+	topic := streamMsg.Topic()
+	payloadBytes := streamMsg.Payload
+	txid := string(streamMsg.TXID)
+
+	// 存储原始二进制数据，用于事后分析
+	RecordRaw(vin, topic, txid, body)
+
+	log.Printf("[Telemetry] [Decode] StreamMessage OK for %s: topic=%s, txid=%s, payload_len=%d", vin, topic, txid, len(payloadBytes))
+
+	switch topic {
+	case "V": // 车辆遥测数据
+		var payload protos.Payload
+		if err := proto.Unmarshal(payloadBytes, &payload); err != nil {
+			log.Printf("[Telemetry] [Decode] Payload unmarshal failed for %s: %v (len=%d)", vin, err, len(payloadBytes))
+			return
+		}
+		log.Printf("[Telemetry] [Decode] Payload OK for %s: %d data points", vin, len(payload.Data))
+		processProtobufTelemetry(vin, &payload)
+	case "alerts":
+		var alerts protos.VehicleAlerts
+		if err := proto.Unmarshal(payloadBytes, &alerts); err != nil {
+			log.Printf("[Telemetry] [Decode] Alerts unmarshal failed for %s: %v", vin, err)
+			return
+		}
+		log.Printf("[Telemetry] [Decode] Alerts OK for %s: %d alerts", vin, len(alerts.Alerts))
+	case "errors":
+		var vehErrors protos.VehicleErrors
+		if err := proto.Unmarshal(payloadBytes, &vehErrors); err != nil {
+			log.Printf("[Telemetry] [Decode] Errors unmarshal failed for %s: %v", vin, err)
+			return
+		}
+		log.Printf("[Telemetry] [Decode] Errors OK for %s: %d errors", vin, len(vehErrors.Errors))
+	case "connectivity":
+		var conn protos.VehicleConnectivity
+		if err := proto.Unmarshal(payloadBytes, &conn); err != nil {
+			log.Printf("[Telemetry] [Decode] Connectivity unmarshal failed for %s: %v", vin, err)
+			return
+		}
+		log.Printf("[Telemetry] [Decode] Connectivity OK for %s: status=%v", vin, conn.Status)
+	default:
+		log.Printf("[Telemetry] [Decode] Unknown topic %q for %s, payload_len=%d", topic, vin, len(payloadBytes))
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func handleJSONTelemetry(vin string, body []byte) {
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		log.Printf("[Telemetry] Failed to parse JSON fallback for %s: %v", vin, err)
+		log.Printf("[Telemetry] [Decode] JSON parse also failed for %s: %v", vin, err)
 		return
 	}
+	log.Printf("[Telemetry] [Decode] JSON OK for %s: %d keys", vin, len(data))
 
-	realtime := &fleet.RealtimeData{
-		UpdatedAt: time.Now().UnixMilli(),
-	}
+	realtimeFields := map[string]interface{}{}
 	stateFields := map[string]interface{}{}
-	media := &fleet.MediaStateData{
-		UpdatedAt: time.Now().UnixMilli(),
-	}
+	mediaFields := map[string]interface{}{}
 
 	hasRealtime := false
 	hasState := false
 	hasMedia := false
 
 	if v, ok := getFloat(data, "VehicleSpeed"); ok {
-		realtime.Speed = v
+		realtimeFields["speed"] = v * 1.60934 // mph → km/h
 		hasRealtime = true
 	}
 	if v, ok := getString(data, "Gear"); ok {
-		realtime.Gear = v
+		realtimeFields["gear"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "Power"); ok {
-		realtime.Power = v
+		realtimeFields["power"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "PedalPosition"); ok {
-		realtime.PedalPosition = v
+		realtimeFields["pedal_position"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "CruiseSetSpeed"); ok {
-		realtime.CruiseSetSpeed = v
+		realtimeFields["cruise_set_speed"] = v * 1.60934 // mph → km/h
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "LateralAcceleration"); ok {
-		realtime.LateralAcceleration = v
+		realtimeFields["lateral_acceleration"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "LongitudinalAcceleration"); ok {
-		realtime.LongitudinalAcceleration = v
+		realtimeFields["longitudinal_acceleration"] = v
 		hasRealtime = true
 	}
 	if loc, ok := data["Location"].(map[string]interface{}); ok {
@@ -305,63 +419,63 @@ func handleJSONTelemetry(vin string, body []byte) {
 		}
 		// Convert WGS-84 to GCJ-02 for China maps
 		lat, lng := geo.WGS84ToGCJ02(latitude, longitude)
-		realtime.Latitude = lat
-		realtime.Longitude = lng
+		realtimeFields["latitude"] = lat
+		realtimeFields["longitude"] = lng
 	}
 	if v, ok := getInt(data, "GpsHeading"); ok {
-		realtime.Heading = v
+		realtimeFields["heading"] = v
 		hasRealtime = true
 	}
 	if v, ok := getInt(data, "GpsState"); ok {
-		realtime.GpsState = v
+		realtimeFields["gps_state"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "Soc"); ok {
-		realtime.Soc = v
+		realtimeFields["soc"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "BatteryLevel"); ok {
-		realtime.BatteryLevel = v
+		realtimeFields["battery_level"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "DCChargingPower"); ok {
-		realtime.DCChargingPower = v
+		realtimeFields["dc_charging_power"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "ACChargingPower"); ok {
-		realtime.ACChargingPower = v
+		realtimeFields["ac_charging_power"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "PackVoltage"); ok {
-		realtime.PackVoltage = v
+		realtimeFields["pack_voltage"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "PackCurrent"); ok {
-		realtime.PackCurrent = v
+		realtimeFields["pack_current"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "EnergyRemaining"); ok {
-		realtime.EnergyRemaining = v
+		realtimeFields["energy_remaining"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "ChargeAmps"); ok {
-		realtime.ChargeAmps = v
+		realtimeFields["charge_amps"] = v
 		hasRealtime = true
 	}
 	if v, ok := getFloat(data, "ChargerVoltage"); ok {
-		realtime.ChargerVoltage = v
+		realtimeFields["charger_voltage"] = v
 		hasRealtime = true
 	}
 	if v, ok := getString(data, "ChargeState"); ok {
-		realtime.ChargeState = v
+		realtimeFields["charge_state"] = v
 		hasRealtime = true
 	}
 	if v, ok := getString(data, "DetailedChargeState"); ok {
-		realtime.ChargeState = v
+		realtimeFields["charge_state"] = v
 		hasRealtime = true
 	}
 	if v, ok := getBool(data, "FastChargerPresent"); ok {
-		realtime.FastChargerPresent = v
+		realtimeFields["fast_charger_present"] = v
 		hasRealtime = true
 	}
 
@@ -949,7 +1063,7 @@ func handleJSONTelemetry(vin string, body []byte) {
 			hasState = true
 		case "GpsState":
 			if val, ok := getInt(v, "value"); ok {
-				realtime.GpsState = val
+				realtimeFields["gps_state"] = val
 				hasRealtime = true
 			}
 		case "SeatVentEnabled":
@@ -966,7 +1080,7 @@ func handleJSONTelemetry(vin string, body []byte) {
 			hasState = true
 		case "DetailedChargeState":
 			if s := getStringVal(v, "value"); s != "" {
-				realtime.ChargeState = s
+				realtimeFields["charge_state"] = s
 				hasRealtime = true
 			}
 		default:
@@ -990,104 +1104,103 @@ func handleJSONTelemetry(vin string, body []byte) {
 	}
 
 	if v, ok := getString(data, "MediaPlaybackStatus"); ok {
-		media.PlaybackStatus = v
+		mediaFields["media_playback_status"] = v
 		hasMedia = true
 	} else if v, ok := getFloat(data, "MediaPlaybackStatus"); ok {
 		// JSON 降级路径中，MediaPlaybackStatus 可能是数字枚举值
 		switch int(v) {
 		case 1:
-			media.PlaybackStatus = "Stopped"
+			mediaFields["media_playback_status"] = "Stopped"
 		case 2:
-			media.PlaybackStatus = "Playing"
+			mediaFields["media_playback_status"] = "Playing"
 		case 3:
-			media.PlaybackStatus = "Paused"
+			mediaFields["media_playback_status"] = "Paused"
 		default:
-			media.PlaybackStatus = "Unknown"
+			mediaFields["media_playback_status"] = "Unknown"
 		}
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaPlaybackSource"); ok {
-		media.AudioSource = v
+		mediaFields["media_audio_source"] = v
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaAudioSource"); ok {
-		media.AudioSource = v
+		mediaFields["media_audio_source"] = v
 		hasMedia = true
 	}
 	if v, ok := getFloat(data, "MediaAudioVolume"); ok {
-		media.Volume = int(v)
+		mediaFields["media_volume"] = int(v)
 		hasMedia = true
 	}
 	if v, ok := getFloat(data, "MediaVolume"); ok {
-		media.Volume = int(v)
+		mediaFields["media_volume"] = int(v)
 		hasMedia = true
 	}
 	if v, ok := getFloat(data, "MediaAudioVolumeIncrement"); ok {
-		media.AudioVolumeIncrement = int(v)
+		mediaFields["media_audio_volume_increment"] = int(v)
 		hasMedia = true
 	}
 	if v, ok := getFloat(data, "MediaAudioVolumeMax"); ok {
-		media.AudioVolumeMax = int(v)
+		mediaFields["media_audio_volume_max"] = int(v)
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaNowPlayingTitle"); ok {
-		media.NowPlayingTitle = v
+		mediaFields["now_playing_title"] = v
 		hasMedia = true
 	}
 	if v, ok := getString(data, "NowPlayingTitle"); ok {
-		media.NowPlayingTitle = v
+		mediaFields["now_playing_title"] = v
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaNowPlayingArtist"); ok {
-		media.NowPlayingArtist = v
+		mediaFields["now_playing_artist"] = v
 		hasMedia = true
 	}
 	if v, ok := getString(data, "NowPlayingArtist"); ok {
-		media.NowPlayingArtist = v
+		mediaFields["now_playing_artist"] = v
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaNowPlayingAlbum"); ok {
-		media.NowPlayingAlbum = v
+		mediaFields["now_playing_album"] = v
 		hasMedia = true
 	}
 	if v, ok := getString(data, "NowPlayingAlbum"); ok {
-		media.NowPlayingAlbum = v
+		mediaFields["now_playing_album"] = v
 		hasMedia = true
 	}
 	if v, ok := getFloat(data, "MediaNowPlayingDuration"); ok {
-		media.NowPlayingDuration = int(v)
+		mediaFields["now_playing_duration"] = int(v)
 		hasMedia = true
 	}
 	if v, ok := getFloat(data, "MediaNowPlayingElapsed"); ok {
-		media.NowPlayingElapsed = int(v)
+		mediaFields["now_playing_elapsed"] = int(v)
 		hasMedia = true
 	}
 	if v, ok := getString(data, "MediaNowPlayingStation"); ok {
-		media.NowPlayingStation = v
+		mediaFields["now_playing_station"] = v
 		hasMedia = true
 	}
 
+	// 节点7: JSON 数据分发
 	if hasRealtime {
-		updateRealtimeState(vin, realtime)
+		log.Printf("[Telemetry] [Dispatch] JSON realtime for %s: %d fields", vin, len(realtimeFields))
+		updateRealtimeFields(vin, realtimeFields)
 	}
 	if hasState {
+		log.Printf("[Telemetry] [Dispatch] JSON state for %s: %d fields", vin, len(stateFields))
 		updateVehicleStateFields(vin, stateFields)
 	}
 	if hasMedia {
-		updateMediaState(vin, media)
+		log.Printf("[Telemetry] [Dispatch] JSON media for %s: %d fields", vin, len(mediaFields))
+		updateMediaFields(vin, mediaFields)
 	}
 }
 
 func processProtobufTelemetry(vin string, payload *protos.Payload) {
-	log.Printf("[Telemetry] Received protobuf payload for %s: %d data points", vin, len(payload.Data))
 
-	realtime := &fleet.RealtimeData{
-		UpdatedAt: time.Now().UnixMilli(),
-	}
+	realtimeFields := map[string]interface{}{}
 	stateFields := map[string]interface{}{}
-	media := &fleet.MediaStateData{
-		UpdatedAt: time.Now().UnixMilli(),
-	}
+	mediaFields := map[string]interface{}{}
 
 	hasRealtime := false
 	hasState := false
@@ -1095,99 +1208,136 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 
 	for _, datum := range payload.Data {
 		if datum.Value == nil || datum.Value.GetInvalid() {
-			log.Printf("[Telemetry] [DEBUG] %s: field %d is invalid or nil", vin, datum.Key)
 			continue
 		}
 
 		switch datum.Key {
 		case protos.Field_VehicleSpeed:
-			realtime.Speed = getFloat64Value(datum.Value)
-			hasRealtime = true
-			log.Printf("[Telemetry] [DEBUG] %s: VehicleSpeed = %.1f km/h", vin, realtime.Speed)
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["speed"] = v * 1.60934 // mph → km/h
+				log.Printf("[Telemetry] [Decode] VehicleSpeed: type=%T, raw=%.4f, kmh=%.2f", datum.Value.GetValue(), v, realtimeFields["speed"])
+				hasRealtime = true
+			}
+
 		case protos.Field_Gear:
 			switch datum.Value.GetShiftStateValue() {
 			case protos.ShiftState_ShiftStateP:
-				realtime.Gear = "P"
+				realtimeFields["gear"] = "P"
+				hasRealtime = true
 			case protos.ShiftState_ShiftStateR:
-				realtime.Gear = "R"
+				realtimeFields["gear"] = "R"
+				hasRealtime = true
 			case protos.ShiftState_ShiftStateN:
-				realtime.Gear = "N"
+				realtimeFields["gear"] = "N"
+				hasRealtime = true
 			case protos.ShiftState_ShiftStateD:
-				realtime.Gear = "D"
+				realtimeFields["gear"] = "D"
+				hasRealtime = true
+			default:
+				// 未知挡位状态，跳过不写入
 			}
-			hasRealtime = true
-			log.Printf("[Telemetry] [DEBUG] %s: Gear = %s", vin, realtime.Gear)
+
 		case protos.Field_PedalPosition:
-			realtime.PedalPosition = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["pedal_position"] = v
+				hasRealtime = true
+			}
 		case protos.Field_CruiseSetSpeed:
-			realtime.CruiseSetSpeed = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["cruise_set_speed"] = v * 1.60934 // mph → km/h
+				hasRealtime = true
+			}
 		case protos.Field_LateralAcceleration:
-			realtime.LateralAcceleration = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["lateral_acceleration"] = v
+				hasRealtime = true
+			}
 		case protos.Field_LongitudinalAcceleration:
-			realtime.LongitudinalAcceleration = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["longitudinal_acceleration"] = v
+				hasRealtime = true
+			}
 		case protos.Field_Location:
 			loc := datum.Value.GetLocationValue()
 			if loc != nil {
 				// Convert WGS-84 to GCJ-02 for China maps
 				lat, lng := geo.WGS84ToGCJ02(loc.GetLatitude(), loc.GetLongitude())
-				realtime.Latitude = lat
-				realtime.Longitude = lng
+				realtimeFields["latitude"] = lat
+				realtimeFields["longitude"] = lng
 				hasRealtime = true
-				log.Printf("[Telemetry] [DEBUG] %s: Location = (%.6f, %.6f) [GCJ-02]", vin, lat, lng)
+
 			}
 		case protos.Field_GpsHeading:
-			realtime.Heading = getIntValue(datum.Value)
-			hasRealtime = true
+			if v, ok := getIntValue(datum.Value); ok {
+				realtimeFields["heading"] = v
+				hasRealtime = true
+			}
 		case protos.Field_GpsState:
-			realtime.GpsState = getIntValue(datum.Value)
-			hasRealtime = true
+			if v, ok := getIntValue(datum.Value); ok {
+				realtimeFields["gps_state"] = v
+				hasRealtime = true
+			}
 		case protos.Field_Soc:
-			realtime.Soc = getFloat64Value(datum.Value)
-			hasRealtime = true
-			log.Printf("[Telemetry] [DEBUG] %s: Soc = %.1f%%", vin, realtime.Soc)
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["soc"] = v
+				hasRealtime = true
+			}
+
 		case protos.Field_BatteryLevel:
-			realtime.BatteryLevel = getFloat64Value(datum.Value)
-			hasRealtime = true
-			log.Printf("[Telemetry] [DEBUG] %s: BatteryLevel = %.1f%%", vin, realtime.BatteryLevel)
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["battery_level"] = v
+				hasRealtime = true
+			}
+
 		case protos.Field_DCChargingPower:
-			realtime.DCChargingPower = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["dc_charging_power"] = v
+				hasRealtime = true
+			}
 		case protos.Field_ACChargingPower:
-			realtime.ACChargingPower = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["ac_charging_power"] = v
+				hasRealtime = true
+			}
 		case protos.Field_PackVoltage:
-			realtime.PackVoltage = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["pack_voltage"] = v
+				hasRealtime = true
+			}
 		case protos.Field_PackCurrent:
-			realtime.PackCurrent = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["pack_current"] = v
+				hasRealtime = true
+			}
 		case protos.Field_EnergyRemaining:
-			realtime.EnergyRemaining = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["energy_remaining"] = v
+				hasRealtime = true
+			}
 		case protos.Field_ChargeAmps:
-			realtime.ChargeAmps = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["charge_amps"] = v
+				hasRealtime = true
+			}
 		case protos.Field_ChargerVoltage:
-			realtime.ChargerVoltage = getFloat64Value(datum.Value)
-			hasRealtime = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				realtimeFields["charger_voltage"] = v
+				hasRealtime = true
+			}
 		case protos.Field_ChargeState:
-			realtime.ChargeState = chargingStateToString(datum.Value.GetChargingValue())
+			realtimeFields["charge_state"] = chargingStateToString(datum.Value.GetChargingValue())
 			hasRealtime = true
 		case protos.Field_DetailedChargeState:
-			realtime.ChargeState = detailedChargeStateToString(datum.Value.GetDetailedChargeStateValue())
+			realtimeFields["charge_state"] = detailedChargeStateToString(datum.Value.GetDetailedChargeStateValue())
 			hasRealtime = true
 		case protos.Field_FastChargerPresent:
-			realtime.FastChargerPresent = datum.Value.GetBooleanValue()
+			realtimeFields["fast_charger_present"] = datum.Value.GetBooleanValue()
 			hasRealtime = true
 
 		case protos.Field_Locked:
 			stateFields["locked"] = datum.Value.GetBooleanValue()
 			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: Locked = %v", vin, stateFields["locked"])
+
 		case protos.Field_DoorState:
 			doors := datum.Value.GetDoorValue()
 			if doors != nil {
@@ -1212,19 +1362,23 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 				stateFields["frunk_open"] = doors.GetTrunkFront()
 				stateFields["door_open"] = doorOpen
 				hasState = true
-				log.Printf("[Telemetry] [DEBUG] %s: DoorState = FL:%v FR:%v RL:%v RR:%v", vin, doors.GetDriverFront(), doors.GetPassengerFront(), doors.GetDriverRear(), doors.GetPassengerRear())
+
 			}
 		case protos.Field_SentryMode:
 			sentryState := datum.Value.GetSentryModeStateValue()
 			stateFields["sentry_mode"] = sentryState != protos.SentryModeState_SentryModeStateOff && sentryState != protos.SentryModeState_SentryModeStateUnknown
 			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: SentryMode = %v", vin, stateFields["sentry_mode"])
+
 		case protos.Field_InsideTemp:
-			stateFields["inside_temp"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["inside_temp"] = v
+				hasState = true
+			}
 		case protos.Field_OutsideTemp:
-			stateFields["outside_temp"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["outside_temp"] = v
+				hasState = true
+			}
 		case protos.Field_ChargePortDoorOpen:
 			stateFields["charge_port_door_open"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1233,59 +1387,86 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["charge_port_latch"] = chargePortLatchToString(latchVal)
 			hasState = true
 		case protos.Field_ChargeLimitSoc:
-			stateFields["charge_limit_soc"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["charge_limit_soc"] = v
+				hasState = true
+			}
 		case protos.Field_TpmsPressureFl:
-			stateFields["tpms_fl"] = getFloat64Value(datum.Value)
-			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureFl = %.2f bar", vin, stateFields["tpms_fl"])
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_fl"] = v
+				hasState = true
+			}
+
 		case protos.Field_TpmsPressureFr:
-			stateFields["tpms_fr"] = getFloat64Value(datum.Value)
-			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureFr = %.2f bar", vin, stateFields["tpms_fr"])
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_fr"] = v
+				hasState = true
+			}
+
 		case protos.Field_TpmsPressureRl:
-			stateFields["tpms_rl"] = getFloat64Value(datum.Value)
-			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureRl = %.2f bar", vin, stateFields["tpms_rl"])
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_rl"] = v
+				hasState = true
+			}
+
 		case protos.Field_TpmsPressureRr:
-			stateFields["tpms_rr"] = getFloat64Value(datum.Value)
-			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: TpmsPressureRr = %.2f bar", vin, stateFields["tpms_rr"])
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_rr"] = v
+				hasState = true
+			}
+
 
 		case protos.Field_Odometer:
-			stateFields["odometer_km"] = getFloat64Value(datum.Value) * 1.60934
-			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: Odometer = %.1f km", vin, stateFields["odometer_km"])
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["odometer_km"] = v * 1.60934
+				hasState = true
+			}
+
 		case protos.Field_CenterDisplay:
-			stateFields["center_display_state"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["center_display_state"] = v
+				hasState = true
+			}
 		case protos.Field_HvacPower:
-			hvacOn := datum.Value.GetBooleanValue()
+			hvacState := datum.Value.GetHvacPowerValue()
+			hvacOn := hvacState != protos.HvacPowerState_HvacPowerStateOff && hvacState != protos.HvacPowerState_HvacPowerStateUnknown
 			stateFields["hvac_power"] = hvacOn
 			stateFields["is_ac_on"] = hvacOn
 			stateFields["is_climate_on"] = hvacOn
 			hasState = true
 		case protos.Field_HvacLeftTemperatureRequest:
-			stateFields["driver_temp_setting"] = getFloat64Value(datum.Value)
-			hasState = true
-		case protos.Field_HvacRightTemperatureRequest:
-			stateFields["passenger_temp_setting"] = getFloat64Value(datum.Value)
-			hasState = true
-		case protos.Field_DefrostMode:
-			stateFields["defrost_mode"] = getIntValue(datum.Value)
-			hasState = true
-		case protos.Field_ChargeRateMilePerHour:
-			stateFields["charge_speed"] = getFloat64Value(datum.Value) * 1.60934
-			hasState = true
-		case protos.Field_IdealBatteryRange:
-			stateFields["range_km"] = getFloat64Value(datum.Value) * 1.60934
-			hasState = true
-		case protos.Field_EstBatteryRange:
-			r := getFloat64Value(datum.Value) * 1.60934
-			if stateFields["range_km"] == nil {
-				stateFields["range_km"] = r
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["driver_temp_setting"] = v
+				hasState = true
 			}
-			hasState = true
+		case protos.Field_HvacRightTemperatureRequest:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["passenger_temp_setting"] = v
+				hasState = true
+			}
+		case protos.Field_DefrostMode:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["defrost_mode"] = v
+				hasState = true
+			}
+		case protos.Field_ChargeRateMilePerHour:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["charge_speed"] = v * 1.60934
+				hasState = true
+			}
+		case protos.Field_IdealBatteryRange:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["range_km"] = v * 1.60934
+				hasState = true
+			}
+		case protos.Field_EstBatteryRange:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				r := v * 1.60934
+				if stateFields["range_km"] == nil {
+					stateFields["range_km"] = r
+				}
+				hasState = true
+			}
 		case protos.Field_BrakePedal:
 			stateFields["brake_pedal"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1294,17 +1475,30 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["drive_rail"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_SeatHeaterLeft:
-			stateFields["seat_heater_left"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["seat_heater_left"] = v
+				hasState = true
+			}
 		case protos.Field_SeatHeaterRight:
-			stateFields["seat_heater_right"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["seat_heater_right"] = v
+				hasState = true
+			}
 		case protos.Field_SeatHeaterRearLeft:
-			stateFields["seat_heater_rear_left"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["seat_heater_rear_left"] = v
+				hasState = true
+			}
 		case protos.Field_SeatHeaterRearRight:
-			stateFields["seat_heater_rear_right"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["seat_heater_rear_right"] = v
+				hasState = true
+			}
+		case protos.Field_SeatHeaterRearCenter:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["seat_heater_rear_center"] = v
+				hasState = true
+			}
 		case protos.Field_DriverSeatBelt:
 			stateFields["driver_seat_belt"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1327,21 +1521,29 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["hvac_ac_enabled"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_HvacSteeringWheelHeatLevel:
-			stateFields["steering_wheel_heater"] = getIntValue(datum.Value) > 0
-			stateFields["hvac_steering_wheel_heat_level"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["steering_wheel_heater"] = v > 0
+				stateFields["hvac_steering_wheel_heat_level"] = v
+				hasState = true
+			}
 		case protos.Field_HvacSteeringWheelHeatAuto:
 			stateFields["hvac_steering_wheel_heat_auto"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_HvacFanSpeed:
-			stateFields["hvac_fan_speed"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["hvac_fan_speed"] = v
+				hasState = true
+			}
 		case protos.Field_HvacAutoMode:
-			stateFields["hvac_auto_mode"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["hvac_auto_mode"] = v
+				hasState = true
+			}
 		case protos.Field_ClimateKeeperMode:
-			stateFields["climate_keeper_mode"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["climate_keeper_mode"] = v
+				hasState = true
+			}
 		case protos.Field_DefrostForPreconditioning:
 			stateFields["defrost_for_preconditioning"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1352,47 +1554,71 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["auto_seat_climate_right"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_ClimateSeatCoolingFrontLeft:
-			stateFields["climate_seat_cooling_front_left"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["climate_seat_cooling_front_left"] = v
+				hasState = true
+			}
 		case protos.Field_ClimateSeatCoolingFrontRight:
-			stateFields["climate_seat_cooling_front_right"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["climate_seat_cooling_front_right"] = v
+				hasState = true
+			}
 		case protos.Field_CabinOverheatProtectionMode:
-			stateFields["cabin_overheat_protection_mode"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["cabin_overheat_protection_mode"] = v
+				hasState = true
+			}
 		case protos.Field_CabinOverheatProtectionTemperatureLimit:
-			stateFields["cabin_overheat_protection_temperature_limit"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["cabin_overheat_protection_temperature_limit"] = v
+				hasState = true
+			}
 		case protos.Field_BatteryHeaterOn:
 			stateFields["battery_heater_on"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_DCChargingEnergyIn:
-			stateFields["dc_charging_energy_in"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["dc_charging_energy_in"] = v
+				hasState = true
+			}
 		case protos.Field_ACChargingEnergyIn:
-			stateFields["ac_charging_energy_in"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["ac_charging_energy_in"] = v
+				hasState = true
+			}
 		case protos.Field_EstimatedHoursToChargeTermination:
-			stateFields["minutes_to_full"] = getFloat64Value(datum.Value) * 60
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["minutes_to_full"] = v * 60
+				hasState = true
+			}
 		case protos.Field_FastChargerType:
-			stateFields["fast_charger_type"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["fast_charger_type"] = v
+				hasState = true
+			}
 		case protos.Field_ChargingCableType:
-			stateFields["charging_cable_type"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["charging_cable_type"] = v
+				hasState = true
+			}
 		case protos.Field_ChargeEnableRequest:
 			stateFields["charge_enable_request"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_ChargeCurrentRequest:
-			stateFields["charge_current_request"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["charge_current_request"] = v
+				hasState = true
+			}
 		case protos.Field_ChargeCurrentRequestMax:
-			stateFields["charge_current_request_max"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["charge_current_request_max"] = v
+				hasState = true
+			}
 		case protos.Field_ChargerPhases:
-			stateFields["charger_phases"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["charger_phases"] = v
+				hasState = true
+			}
 		case protos.Field_ChargePortColdWeatherMode:
 			stateFields["charge_port_cold_weather_mode"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1401,8 +1627,8 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			if loc != nil {
 				stateFields["destination_latitude"] = loc.GetLatitude()
 				stateFields["destination_longitude"] = loc.GetLongitude()
+				hasState = true
 			}
-			hasState = true
 		case protos.Field_DestinationName:
 			stateFields["destination_name"] = datum.Value.GetStringValue()
 			hasState = true
@@ -1425,8 +1651,10 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["homelink_nearby"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_HomelinkDeviceCount:
-			stateFields["homelink_device_count"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["homelink_device_count"] = v
+				hasState = true
+			}
 		case protos.Field_LightsHazardsActive:
 			stateFields["lights_hazards_active"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1448,20 +1676,28 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["service_mode"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_BMSState:
-			stateFields["bms_state"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["bms_state"] = v
+				hasState = true
+			}
 		case protos.Field_BmsFullchargecomplete:
 			stateFields["bms_full_charge_complete"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_LifetimeEnergyUsed:
-			stateFields["lifetime_energy_used"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["lifetime_energy_used"] = v
+				hasState = true
+			}
 		case protos.Field_CurrentLimitMph:
-			stateFields["current_limit_mph"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["current_limit_mph"] = v
+				hasState = true
+			}
 		case protos.Field_CruiseFollowDistance:
-			stateFields["cruise_follow_distance"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["cruise_follow_distance"] = v
+				hasState = true
+			}
 		case protos.Field_AutomaticBlindSpotCamera:
 			stateFields["automatic_blind_spot_camera"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1469,11 +1705,15 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["blind_spot_collision_warning_chime"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_ForwardCollisionWarning:
-			stateFields["forward_collision_warning"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["forward_collision_warning"] = v
+				hasState = true
+			}
 		case protos.Field_LaneDepartureAvoidance:
-			stateFields["lane_departure_avoidance"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["lane_departure_avoidance"] = v
+				hasState = true
+			}
 		case protos.Field_EmergencyLaneDepartureAvoidance:
 			stateFields["emergency_lane_departure_avoidance"] = datum.Value.GetBooleanValue()
 			hasState = true
@@ -1484,51 +1724,601 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			stateFields["dcdc_enable"] = datum.Value.GetBooleanValue()
 			hasState = true
 		case protos.Field_BrickVoltageMax:
-			stateFields["brick_voltage_max"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["brick_voltage_max"] = v
+				hasState = true
+			}
 		case protos.Field_BrickVoltageMin:
-			stateFields["brick_voltage_min"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["brick_voltage_min"] = v
+				hasState = true
+			}
 		case protos.Field_IsolationResistance:
-			stateFields["isolation_resistance"] = getFloat64Value(datum.Value)
-			hasState = true
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["isolation_resistance"] = v
+				hasState = true
+			}
 		case protos.Field_Hvil:
-			stateFields["hvil"] = getIntValue(datum.Value)
-			hasState = true
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["hvil"] = v
+				hasState = true
+			}
 
 		case protos.Field_MediaPlaybackStatus:
-			media.PlaybackStatus = mediaStatusToString(datum.Value.GetMediaStatusValue())
+			mediaFields["media_playback_status"] = mediaStatusToString(datum.Value.GetMediaStatusValue())
 			hasMedia = true
 		case protos.Field_MediaPlaybackSource:
-			media.AudioSource = datum.Value.GetStringValue()
+			mediaFields["media_audio_source"] = datum.Value.GetStringValue()
 			hasMedia = true
 		case protos.Field_MediaAudioVolume:
-			media.Volume = getIntValue(datum.Value)
-			hasMedia = true
+			if v, ok := getIntValue(datum.Value); ok {
+				mediaFields["media_volume"] = v
+				hasMedia = true
+			}
 		case protos.Field_MediaAudioVolumeIncrement:
-			media.AudioVolumeIncrement = getIntValue(datum.Value)
-			hasMedia = true
+			if v, ok := getIntValue(datum.Value); ok {
+				mediaFields["media_audio_volume_increment"] = v
+				hasMedia = true
+			}
 		case protos.Field_MediaAudioVolumeMax:
-			media.AudioVolumeMax = getIntValue(datum.Value)
-			hasMedia = true
+			if v, ok := getIntValue(datum.Value); ok {
+				mediaFields["media_audio_volume_max"] = v
+				hasMedia = true
+			}
 		case protos.Field_MediaNowPlayingDuration:
-			media.NowPlayingDuration = getIntValue(datum.Value)
-			hasMedia = true
+			if v, ok := getIntValue(datum.Value); ok {
+				mediaFields["now_playing_duration"] = v
+				hasMedia = true
+			}
 		case protos.Field_MediaNowPlayingElapsed:
-			media.NowPlayingElapsed = getIntValue(datum.Value)
-			hasMedia = true
+			if v, ok := getIntValue(datum.Value); ok {
+				mediaFields["now_playing_elapsed"] = v
+				hasMedia = true
+			}
 		case protos.Field_MediaNowPlayingArtist:
-			media.NowPlayingArtist = datum.Value.GetStringValue()
+			mediaFields["now_playing_artist"] = datum.Value.GetStringValue()
 			hasMedia = true
 		case protos.Field_MediaNowPlayingTitle:
-			media.NowPlayingTitle = datum.Value.GetStringValue()
+			mediaFields["now_playing_title"] = datum.Value.GetStringValue()
 			hasMedia = true
 		case protos.Field_MediaNowPlayingAlbum:
-			media.NowPlayingAlbum = datum.Value.GetStringValue()
+			mediaFields["now_playing_album"] = datum.Value.GetStringValue()
 			hasMedia = true
 		case protos.Field_MediaNowPlayingStation:
-			media.NowPlayingStation = datum.Value.GetStringValue()
+			mediaFields["now_playing_station"] = datum.Value.GetStringValue()
 			hasMedia = true
+
+		// ========== 充电调度/预处理 ==========
+		case protos.Field_TimeToFullCharge:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["time_to_full_charge"] = v
+				hasState = true
+			}
+		case protos.Field_ScheduledChargingStartTime:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["scheduled_charging_start_time"] = v
+				hasState = true
+			}
+		case protos.Field_ScheduledChargingPending:
+			stateFields["scheduled_charging_pending"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_ScheduledDepartureTime:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["scheduled_departure_time"] = v
+				hasState = true
+			}
+		case protos.Field_PreconditioningEnabled:
+			stateFields["preconditioning_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_ScheduledChargingMode:
+			mode := datum.Value.GetScheduledChargingModeValue()
+			switch mode {
+			case protos.ScheduledChargingModeValue_ScheduledChargingModeOff:
+				stateFields["scheduled_charging_mode"] = "Off"
+			case protos.ScheduledChargingModeValue_ScheduledChargingModeStartAt:
+				stateFields["scheduled_charging_mode"] = "StartAt"
+			case protos.ScheduledChargingModeValue_ScheduledChargingModeDepartBy:
+				stateFields["scheduled_charging_mode"] = "DepartBy"
+			default:
+				stateFields["scheduled_charging_mode"] = "Unknown"
+			}
+			hasState = true
+		case protos.Field_ChargePort:
+			cp := datum.Value.GetChargePortValue()
+			switch cp {
+			case protos.ChargePortValue_ChargePortUS:
+				stateFields["charge_port"] = "US"
+			case protos.ChargePortValue_ChargePortEU:
+				stateFields["charge_port"] = "EU"
+			case protos.ChargePortValue_ChargePortGB:
+				stateFields["charge_port"] = "GB"
+			case protos.ChargePortValue_ChargePortCCS:
+				stateFields["charge_port"] = "CCS"
+			default:
+				stateFields["charge_port"] = "Unknown"
+			}
+			hasState = true
+		case protos.Field_NotEnoughPowerToHeat:
+			stateFields["not_enough_power_to_heat"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_SuperchargerSessionTripPlanner:
+			stateFields["supercharger_session_trip_planner"] = datum.Value.GetBooleanValue()
+			hasState = true
+
+		// ========== 安全/驾驶辅助 ==========
+		case protos.Field_SpeedLimitMode:
+			stateFields["speed_limit_mode"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_PassengerSeatBelt:
+			buckle := datum.Value.GetBuckleStatusValue()
+			stateFields["passenger_seat_belt"] = buckle == protos.BuckleStatus_BuckleStatusLatched
+			hasState = true
+		case protos.Field_BrakePedalPos:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["brake_pedal_pos"] = v
+				hasState = true
+			}
+		case protos.Field_PinToDriveEnabled:
+			stateFields["pin_to_drive_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_PairedPhoneKeyAndKeyFobQty:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["paired_phone_key_and_key_fob_qty"] = v
+				hasState = true
+			}
+		case protos.Field_SpeedLimitWarning:
+			level := datum.Value.GetSpeedAssistLevelValue()
+			switch level {
+			case protos.SpeedAssistLevel_SpeedAssistLevelNone:
+				stateFields["speed_limit_warning"] = "None"
+			case protos.SpeedAssistLevel_SpeedAssistLevelDisplay:
+				stateFields["speed_limit_warning"] = "Display"
+			case protos.SpeedAssistLevel_SpeedAssistLevelChime:
+				stateFields["speed_limit_warning"] = "Chime"
+			default:
+				stateFields["speed_limit_warning"] = "Unknown"
+			}
+			hasState = true
+		case protos.Field_ValetModeEnabled:
+			stateFields["valet_mode_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_LifetimeEnergyGainedRegen:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["lifetime_energy_gained_regen"] = v
+				hasState = true
+			}
+		case protos.Field_RearDefrostEnabled:
+			stateFields["rear_defrost_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+
+		// ========== 导航/行程 ==========
+		case protos.Field_RouteLastUpdated:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["route_last_updated"] = v
+				hasState = true
+			}
+		case protos.Field_MilesToArrival:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["km_to_arrival"] = v * 1.60934
+				hasState = true
+			}
+		case protos.Field_MinutesToArrival:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["minutes_to_arrival"] = v
+				hasState = true
+			}
+		case protos.Field_OriginLocation:
+			loc := datum.Value.GetLocationValue()
+			if loc != nil {
+				stateFields["origin_latitude"] = loc.GetLatitude()
+				stateFields["origin_longitude"] = loc.GetLongitude()
+				hasState = true
+			}
+		case protos.Field_ExpectedEnergyPercentAtTripArrival:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["expected_energy_percent_at_arrival"] = v
+				hasState = true
+			}
+		case protos.Field_RouteTrafficMinutesDelay:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["route_traffic_minutes_delay"] = v
+				hasState = true
+			}
+
+		// ========== 里程（英里→公里） ==========
+		case protos.Field_MilesSinceReset:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["km_since_reset"] = v * 1.60934
+				hasState = true
+			}
+		case protos.Field_SelfDrivingMilesSinceReset:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["self_driving_km_since_reset"] = v * 1.60934
+				hasState = true
+			}
+		case protos.Field_RatedRange:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["rated_range_km"] = v * 1.60934
+				hasState = true
+			}
+
+		// ========== 车辆信息 ==========
+		case protos.Field_VehicleName:
+			stateFields["vehicle_name"] = datum.Value.GetStringValue()
+			hasState = true
+		case protos.Field_Trim:
+			stateFields["trim"] = datum.Value.GetStringValue()
+			hasState = true
+		case protos.Field_RoofColor:
+			stateFields["roof_color"] = datum.Value.GetStringValue()
+			hasState = true
+		case protos.Field_WheelType:
+			stateFields["wheel_type"] = datum.Value.GetStringValue()
+			hasState = true
+		case protos.Field_EuropeVehicle:
+			stateFields["europe_vehicle"] = datum.Value.GetBooleanValue()
+			hasState = true
+
+		// ========== 地理围栏 ==========
+		case protos.Field_LocatedAtHome:
+			stateFields["located_at_home"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_LocatedAtWork:
+			stateFields["located_at_work"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_LocatedAtFavorite:
+			stateFields["located_at_favorite"] = datum.Value.GetBooleanValue()
+			hasState = true
+
+		// ========== 电池诊断 ==========
+		case protos.Field_NumBrickVoltageMax:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["num_brick_voltage_max"] = v
+				hasState = true
+			}
+		case protos.Field_NumBrickVoltageMin:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["num_brick_voltage_min"] = v
+				hasState = true
+			}
+		case protos.Field_NumModuleTempMax:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["num_module_temp_max"] = v
+				hasState = true
+			}
+		case protos.Field_ModuleTempMax:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["module_temp_max"] = v
+				hasState = true
+			}
+		case protos.Field_NumModuleTempMin:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["num_module_temp_min"] = v
+				hasState = true
+			}
+		case protos.Field_ModuleTempMin:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["module_temp_min"] = v
+				hasState = true
+			}
+
+		// ========== HVAC/气候 ==========
+		case protos.Field_HvacFanStatus:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["hvac_fan_status"] = v
+				hasState = true
+			}
+		case protos.Field_RearDisplayHvacEnabled:
+			stateFields["rear_display_hvac_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_SeatVentEnabled:
+			stateFields["seat_vent_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+
+		// ========== Powershare (V2G/V2L) ==========
+		case protos.Field_PowershareHoursLeft:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["powershare_hours_left"] = v
+				hasState = true
+			}
+		case protos.Field_PowershareInstantaneousPowerKW:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["powershare_instantaneous_power_kw"] = v
+				hasState = true
+			}
+		case protos.Field_PowershareStatus:
+			ps := datum.Value.GetPowershareStateValue()
+			stateFields["powershare_status"] = ps.String()
+			hasState = true
+		case protos.Field_PowershareStopReason:
+			psr := datum.Value.GetPowershareStopReasonValue()
+			stateFields["powershare_stop_reason"] = psr.String()
+			hasState = true
+		case protos.Field_PowershareType:
+			pt := datum.Value.GetPowershareTypeValue()
+			stateFields["powershare_type"] = pt.String()
+			hasState = true
+
+		// ========== 软件更新 ==========
+		case protos.Field_SoftwareUpdateDownloadPercentComplete:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["software_update_download_percent"] = v
+				hasState = true
+			}
+		case protos.Field_SoftwareUpdateExpectedDurationMinutes:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["software_update_expected_duration_minutes"] = v
+				hasState = true
+			}
+		case protos.Field_SoftwareUpdateInstallationPercentComplete:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["software_update_installation_percent"] = v
+				hasState = true
+			}
+		case protos.Field_SoftwareUpdateScheduledStartTime:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["software_update_scheduled_start_time"] = v
+				hasState = true
+			}
+		case protos.Field_SoftwareUpdateVersion:
+			stateFields["software_update_version"] = datum.Value.GetStringValue()
+			hasState = true
+
+		// ========== Cybertruck 专用 ==========
+		case protos.Field_OffroadLightbarPresent:
+			stateFields["offroad_lightbar_present"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_TonneauOpenPercent:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tonneau_open_percent"] = v
+				hasState = true
+			}
+		case protos.Field_TonneauPosition:
+			tp := datum.Value.GetTonneauPositionValue()
+			stateFields["tonneau_position"] = tp.String()
+			hasState = true
+		case protos.Field_TonneauTentMode:
+			ttm := datum.Value.GetTonneauTentModeValue()
+			stateFields["tonneau_tent_mode"] = ttm.String()
+			hasState = true
+
+		// ========== TPMS 详细 ==========
+		case protos.Field_TpmsLastSeenPressureTimeFl:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_last_seen_pressure_time_fl"] = v
+				hasState = true
+			}
+		case protos.Field_TpmsLastSeenPressureTimeFr:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_last_seen_pressure_time_fr"] = v
+				hasState = true
+			}
+		case protos.Field_TpmsLastSeenPressureTimeRl:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_last_seen_pressure_time_rl"] = v
+				hasState = true
+			}
+		case protos.Field_TpmsLastSeenPressureTimeRr:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["tpms_last_seen_pressure_time_rr"] = v
+				hasState = true
+			}
+		case protos.Field_TpmsHardWarnings:
+			stateFields["tpms_hard_warnings"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_TpmsSoftWarnings:
+			stateFields["tpms_soft_warnings"] = datum.Value.GetBooleanValue()
+			hasState = true
+
+		// ========== 其他 ==========
+		case protos.Field_WiperHeatEnabled:
+			stateFields["wiper_heat_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_RemoteStartEnabled:
+			stateFields["remote_start_enabled"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_RearSeatHeaters:
+			if v, ok := getIntValue(datum.Value); ok {
+				stateFields["rear_seat_heaters"] = v
+				hasState = true
+			}
+		case protos.Field_RightHandDrive:
+			stateFields["right_hand_drive"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_SunroofInstalled:
+			si := datum.Value.GetSunroofInstalledStateValue()
+			stateFields["sunroof_installed"] = si.String()
+			hasState = true
+		case protos.Field_GuestModeMobileAccessState:
+			gm := datum.Value.GetGuestModeMobileAccessValue()
+			stateFields["guest_mode_mobile_access_state"] = gm.String()
+			hasState = true
+
+		// ========== 用户偏好设置 ==========
+		case protos.Field_SettingDistanceUnit:
+			du := datum.Value.GetDistanceUnitValue()
+			stateFields["setting_distance_unit"] = du.String()
+			hasState = true
+		case protos.Field_SettingTemperatureUnit:
+			tu := datum.Value.GetTemperatureUnitValue()
+			stateFields["setting_temperature_unit"] = tu.String()
+			hasState = true
+		case protos.Field_Setting24HourTime:
+			stateFields["setting_24_hour_time"] = datum.Value.GetBooleanValue()
+			hasState = true
+		case protos.Field_SettingTirePressureUnit:
+			pu := datum.Value.GetPressureUnitValue()
+			stateFields["setting_tire_pressure_unit"] = pu.String()
+			hasState = true
+		case protos.Field_SettingChargeUnit:
+			cu := datum.Value.GetChargeUnitPreferenceValue()
+			stateFields["setting_charge_unit"] = cu.String()
+			hasState = true
+
+		// ========== 驱动逆变器诊断（Di* 字段） ==========
+		case protos.Field_DiStateR:
+			stateFields["di_state_r"] = datum.Value.GetDriveInverterStateValue().String()
+			hasState = true
+		case protos.Field_DiStateF:
+			stateFields["di_state_f"] = datum.Value.GetDriveInverterStateValue().String()
+			hasState = true
+		case protos.Field_DiStateREL:
+			stateFields["di_state_rel"] = datum.Value.GetDriveInverterStateValue().String()
+			hasState = true
+		case protos.Field_DiStateRER:
+			stateFields["di_state_rer"] = datum.Value.GetDriveInverterStateValue().String()
+			hasState = true
+		case protos.Field_DiHeatsinkTR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_heatsink_t_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiHeatsinkTF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_heatsink_t_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiHeatsinkTREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_heatsink_t_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiHeatsinkTRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_heatsink_t_rer"] = v
+				hasState = true
+			}
+		case protos.Field_DiAxleSpeedR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_axle_speed_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiAxleSpeedF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_axle_speed_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiAxleSpeedREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_axle_speed_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiAxleSpeedRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_axle_speed_rer"] = v
+				hasState = true
+			}
+		case protos.Field_DiTorquemotor:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_torque_motor"] = v
+				hasState = true
+			}
+		case protos.Field_DiSlaveTorqueCmd:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_slave_torque_cmd"] = v
+				hasState = true
+			}
+		case protos.Field_DiTorqueActualR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_torque_actual_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiTorqueActualF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_torque_actual_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiTorqueActualREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_torque_actual_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiTorqueActualRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_torque_actual_rer"] = v
+				hasState = true
+			}
+		case protos.Field_DiStatorTempR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_stator_temp_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiStatorTempF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_stator_temp_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiStatorTempREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_stator_temp_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiStatorTempRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_stator_temp_rer"] = v
+				hasState = true
+			}
+		case protos.Field_DiVBatR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_vbat_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiVBatF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_vbat_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiVBatREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_vbat_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiVBatRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_vbat_rer"] = v
+				hasState = true
+			}
+		case protos.Field_DiMotorCurrentR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_motor_current_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiMotorCurrentF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_motor_current_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiMotorCurrentREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_motor_current_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiMotorCurrentRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_motor_current_rer"] = v
+				hasState = true
+			}
+		case protos.Field_DiInverterTR:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_inverter_t_r"] = v
+				hasState = true
+			}
+		case protos.Field_DiInverterTF:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_inverter_t_f"] = v
+				hasState = true
+			}
+		case protos.Field_DiInverterTREL:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_inverter_t_rel"] = v
+				hasState = true
+			}
+		case protos.Field_DiInverterTRER:
+			if v, ok := getFloat64Value(datum.Value); ok {
+				stateFields["di_inverter_t_rer"] = v
+				hasState = true
+			}
+
 		default:
 			fieldName := strings.TrimPrefix(datum.Key.String(), "Field_")
 			snake := toSnakeCase(fieldName)
@@ -1546,49 +2336,51 @@ func processProtobufTelemetry(vin string, payload *protos.Payload) {
 			case *protos.Value_StringValue:
 				stateFields[snake] = v.StringValue
 			default:
-				stateFields[snake] = fmt.Sprintf("%v", datum.Value)
+				// 未知类型跳过，不存入 fmt.Sprintf 的字符串
+				continue
 			}
 			hasState = true
-			log.Printf("[Telemetry] [DEBUG] %s: %s = %v (default case)", vin, snake, stateFields[snake])
+
 		}
 	}
 
-	// 详细日志：记录所有收到的遥测数据
+	// 节点8: Protobuf 数据分发（只推送实际收到的字段，不覆盖未推送的字段）
 	if hasRealtime {
-		log.Printf("[Telemetry] [REALTIME] %s: speed=%.1f km/h, gear=%s, power=%.1f kW, soc=%.1f%%, lat=%.6f, lng=%.6f, heading=%d, cruise_set_speed=%.1f",
-			vin, realtime.Speed, realtime.Gear, realtime.Power, realtime.Soc, realtime.Latitude, realtime.Longitude, realtime.Heading, realtime.CruiseSetSpeed)
+		log.Printf("[Telemetry] [Dispatch] Protobuf realtime for %s: %d fields", vin, len(realtimeFields))
+		updateRealtimeFields(vin, realtimeFields)
 	}
 	if hasState {
-		log.Printf("[Telemetry] [STATE] %s: %d fields - %v", vin, len(stateFields), stateFields)
-	}
-	if hasMedia {
-		log.Printf("[Telemetry] [MEDIA] %s: status=%s, title=%s, artist=%s, volume=%d",
-			vin, media.PlaybackStatus, media.NowPlayingTitle, media.NowPlayingArtist, media.Volume)
-	}
-
-	if hasRealtime {
-		updateRealtimeState(vin, realtime)
-	}
-	if hasState {
+		log.Printf("[Telemetry] [Dispatch] Protobuf state for %s: %d fields", vin, len(stateFields))
 		updateVehicleStateFields(vin, stateFields)
 	}
 	if hasMedia {
-		updateMediaState(vin, media)
+		log.Printf("[Telemetry] [Dispatch] Protobuf media for %s: %d fields", vin, len(mediaFields))
+		updateMediaFields(vin, mediaFields)
 	}
 }
 
-func getFloat64Value(v *protos.Value) float64 {
-	switch v.GetValue().(type) {
+func getFloat64Value(v *protos.Value) (float64, bool) {
+	switch val := v.GetValue().(type) {
 	case *protos.Value_DoubleValue:
-		return v.GetDoubleValue()
+		return val.DoubleValue, true
 	case *protos.Value_FloatValue:
-		return float64(v.GetFloatValue())
+		return float64(val.FloatValue), true
 	case *protos.Value_IntValue:
-		return float64(v.GetIntValue())
+		return float64(val.IntValue), true
 	case *protos.Value_LongValue:
-		return float64(v.GetLongValue())
+		return float64(val.LongValue), true
+	case *protos.Value_StringValue:
+		// Tesla proto 注释: "Most Datums are strings and is the default format"
+		// Field 179 之前的字段可能以 string_value 返回数值
+		if f, err := strconv.ParseFloat(val.StringValue, 64); err == nil {
+			return f, true
+		}
+		log.Printf("[Telemetry] [Decode] StringValue parse failed: %q", val.StringValue)
+		return 0, false
 	default:
-		return 0
+		// 未知类型，跳过而非返回0
+		log.Printf("[Telemetry] [Decode] getFloat64Value unhandled type: %T, value: %v", v.GetValue(), v.GetValue())
+		return 0, false
 	}
 }
 
@@ -1603,18 +2395,27 @@ func toSnakeCase(s string) string {
 	return strings.ToLower(string(result))
 }
 
-func getIntValue(v *protos.Value) int {
-	switch v.GetValue().(type) {
+func getIntValue(v *protos.Value) (int, bool) {
+	switch val := v.GetValue().(type) {
 	case *protos.Value_IntValue:
-		return int(v.GetIntValue())
+		return int(val.IntValue), true
 	case *protos.Value_LongValue:
-		return int(v.GetLongValue())
+		return int(val.LongValue), true
 	case *protos.Value_DoubleValue:
-		return int(v.GetDoubleValue())
+		return int(val.DoubleValue), true
 	case *protos.Value_FloatValue:
-		return int(v.GetFloatValue())
+		return int(val.FloatValue), true
+	case *protos.Value_StringValue:
+		// Tesla proto 注释: "Most Datums are strings and is the default format"
+		if i, err := strconv.Atoi(val.StringValue); err == nil {
+			return i, true
+		}
+		if f, err := strconv.ParseFloat(val.StringValue, 64); err == nil {
+			return int(f), true
+		}
+		return 0, false
 	default:
-		return 0
+		return 0, false
 	}
 }
 
@@ -1682,9 +2483,12 @@ func mediaStatusToString(status protos.MediaStatus) string {
 	}
 }
 
-func updateRealtimeState(vin string, realtime *fleet.RealtimeData) {
-	if err := redis.SetVehicleRealtime(vin, realtime); err != nil {
-		log.Printf("[Telemetry] Failed to update Redis realtime for %s: %v", vin, err)
+func updateRealtimeFields(vin string, fields map[string]interface{}) {
+	// 节点9: 实时数据增量写入（只更新实际推送的字段，不覆盖未推送的字段）
+	RecordRealtime(vin, fields)
+
+	if err := redis.UpdateVehicleRealtimeFields(vin, fields); err != nil {
+		log.Printf("[Telemetry] [Store] Redis realtime error for %s: %v", vin, err)
 	}
 
 	redis.SetVehicleStatus(vin, &redis.VehicleStatus{
@@ -1692,62 +2496,60 @@ func updateRealtimeState(vin string, realtime *fleet.RealtimeData) {
 		Source: "telemetry",
 	})
 
-	ws.BroadcastRealtimeUpdate(vin, realtime)
+	// 更新状态引擎（增量合并，保留上次已知值）
+	stateOutput := state.UpdateFromTelemetry(vin, fields)
+	if stateOutput != nil {
+		fields["state_output"] = stateOutput
+	}
 
-	log.Printf("[Telemetry] Realtime update for %s: speed=%.1f gear=%s soc=%.0f power=%.1f lat=%.4f lng=%.4f",
-		vin, realtime.Speed, realtime.Gear, realtime.Soc, realtime.Power, realtime.Latitude, realtime.Longitude)
+	ws.BroadcastRealtimeUpdate(vin, fields)
 }
 
 func updateVehicleStateFields(vin string, fields map[string]interface{}) {
+	// 节点10: 状态数据写入
+	RecordState(vin, fields)
+
 	if err := redis.UpdateVehicleStateFields(vin, fields); err != nil {
-		log.Printf("[Telemetry] Failed to update Redis state for %s: %v", vin, err)
+		log.Printf("[Telemetry] [Store] Redis state error for %s: %v", vin, err)
+	}
+
+	// 更新状态引擎（增量合并，保留上次已知值）
+	stateOutput := state.UpdateFromTelemetry(vin, fields)
+	if stateOutput != nil {
+		fields["state_output"] = stateOutput
 	}
 
 	ws.BroadcastStateUpdate(vin, fields)
-
-	log.Printf("[Telemetry] State update for %s: %d fields", vin, len(fields))
 }
 
-func updateMediaState(vin string, media *fleet.MediaStateData) {
-	mediaMu.Lock()
-	latestMedia[vin] = media
-	mediaMu.Unlock()
-
-	fields := map[string]interface{}{
-		"media_playback_status":      media.PlaybackStatus,
-		"media_audio_source":         media.AudioSource,
-		"media_volume":               media.Volume,
-		"media_audio_volume_increment": media.AudioVolumeIncrement,
-		"media_audio_volume_max":     media.AudioVolumeMax,
-		"now_playing_title":          media.NowPlayingTitle,
-		"now_playing_artist":         media.NowPlayingArtist,
-		"now_playing_album":          media.NowPlayingAlbum,
-		"now_playing_duration":       media.NowPlayingDuration,
-		"now_playing_elapsed":        media.NowPlayingElapsed,
-		"now_playing_station":        media.NowPlayingStation,
-	}
+func updateMediaFields(vin string, fields map[string]interface{}) {
+	// 节点11: 媒体数据增量写入（只更新实际推送的字段，不覆盖未推送的字段）
+	RecordMedia(vin, fields)
 
 	if err := redis.UpdateVehicleStateFields(vin, fields); err != nil {
-		log.Printf("[Telemetry] Failed to update Redis for %s: %v", vin, err)
+		log.Printf("[Telemetry] [Store] Redis media error for %s: %v", vin, err)
 	}
+
+	// 更新状态引擎（增量合并，保留上次已知值）
+	state.UpdateFromTelemetry(vin, fields)
 
 	if ws.DefaultHub != nil {
 		ws.DefaultHub.BroadcastToVIN(vin, "media_state", fields)
 	}
-
-	log.Printf("[Telemetry] Media update for %s: status=%q source=%q title=%q artist=%q volume=%d",
-		vin, media.PlaybackStatus, media.AudioSource, media.NowPlayingTitle, media.NowPlayingArtist, media.Volume)
 }
 
-func GetLatestMedia(vin string) *fleet.MediaStateData {
+func GetLatestMedia(vin string) map[string]interface{} {
 	mediaMu.RLock()
 	defer mediaMu.RUnlock()
 	m, ok := latestMedia[vin]
 	if !ok {
 		return nil
 	}
-	copied := *m
-	return &copied
+	copied := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		copied[k] = v
+	}
+	return copied
 }
 
 func parseECPrivateKey(pemData []byte) (*ecdsa.PrivateKey, error) {

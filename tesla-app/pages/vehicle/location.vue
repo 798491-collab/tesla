@@ -145,14 +145,13 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, onActivated, getCurrentInstance } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
-import { getVehicleState } from '@/api/vehicle.js'
 import { useVehicleStore } from '@/store/vehicle'
 import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
 import { get } from '@/utils/request.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
 import { useThemeStore } from '@/store/theme'
-import { getDisplayStateLabel, getDisplayStateColor, getOnlineStateIcon, getOnlineStateMarkerColor, isVehicleOnline, getRefreshInterval } from '@/utils/vehicle-state'
+import { getDisplayStateLabel, getDisplayStateColor, getOnlineStateIcon, getOnlineStateMarkerColor, isVehicleOnline } from '@/utils/vehicle-state'
 
 const themeStore = useThemeStore()
 const themeClass = computed(() => themeStore.themeClass)
@@ -176,7 +175,6 @@ const tencentMapKey = import.meta.env.VITE_TENCENT_MAP_KEY || ''
 const darkStyleId = import.meta.env.VITE_TENCENT_MAP_STYLE_DARK || '2'
 let isStyleSet = false
 let mapContext = null
-let refreshTimer = null
 
 watch(() => themeStore.resolvedTheme, (theme) => {
   if ((theme === 'dark' || theme === 'visionpro') && mapStyle.value === 'standard') {
@@ -239,7 +237,7 @@ watch(() => vehicleWSData.value, (wsData) => {
   if (vehicleWSStateOutput.value) {
     stateOutput.value = vehicleWSStateOutput.value
   }
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 const currentLayerStyle = computed(() => {
   const isDark = mapStyle.value === 'dark' || themeStore.resolvedTheme === 'dark' || themeStore.resolvedTheme === 'visionpro'
@@ -337,9 +335,7 @@ onMounted(() => {
   }
   if (vin.value) {
     initVehicleData(vin.value)
-    loadState()
     loadAuthStatus()
-    startAutoRefresh()
   }
   setTimeout(() => applyMapDarkStyle(), 800)
 })
@@ -347,17 +343,12 @@ onMounted(() => {
 onActivated(() => {
   if (vin.value) {
     initVehicleData(vin.value)
-    loadState()
     loadAuthStatus()
-    startAutoRefresh()
   }
 })
 
 onUnmounted(() => {
   destroyVehicleData()
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-  }
 })
 
 onShow(() => {
@@ -368,68 +359,12 @@ onShow(() => {
 
 onHide(() => {
   destroyVehicleData()
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
 })
-
-const loadState = async () => {
-  try {
-    const res = await getVehicleState(vin.value)
-    const data = res.data || {}
-
-    const latitude = data.latitude
-    const longitude = data.longitude
-
-    const hasValidLocation = latitude && longitude && latitude !== 0 && longitude !== 0
-    if (hasValidLocation) {
-      locationAuthorized.value = true
-    }
-
-    state.value = {
-      latitude: latitude,
-      longitude: longitude,
-      heading: data.heading,
-      speed: data.speed,
-      gear: data.gear,
-      driving: data.driving,
-      charging: data.charging,
-      soc: data.soc,
-      range_km: data.range_km,
-      online: isVehicleOnline(data.state_output),
-      state: data.state_output?.state?.online_state || data.state,
-      updated_at: new Date().toISOString()
-    }
-    if (data.state_output) {
-      stateOutput.value = data.state_output
-    }
-  } catch (err) {
-    console.error('获取车辆数据失败:', err)
-  }
-}
 
 const loadAuthStatus = () => {
   get(`/api/tesla/vehicle/${vin.value}/detail`).then((res) => {
     locationAuthorized.value = res.data?.location_authorized || false
   }).catch(() => {})
-}
-
-const startAutoRefresh = () => {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-  }
-  const getInterval = () => {
-    return getRefreshInterval(stateOutput.value)
-  }
-  const tick = () => {
-    if (vin.value) {
-      loadState()
-    }
-    if (refreshTimer) clearInterval(refreshTimer)
-    refreshTimer = setInterval(tick, getInterval())
-  }
-  tick()
 }
 
 const goReauth = () => {

@@ -27,5 +27,7 @@ export default {
 </script>
 
 <style lang="scss">
+/* #ifndef APP-NVUE */
 @import "@/styles/common.scss";
+/* #endif */
 </style>

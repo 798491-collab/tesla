@@ -28,10 +28,11 @@
         "pageOrientation": "landscape"
       }
     },
+
     {
-      "path": "pages/dashboard/HorizontalDashboard",
+      "path": "pages/dashboard/SplitDashboard",
       "style": {
-        "navigationBarTitleText": "横屏仪表盘",
+        "navigationBarTitleText": "分屏仪表盘",
         "navigationStyle": "custom",
         "pageOrientation": "landscape"
       }
@@ -164,6 +165,13 @@
       }
     },
     {
+      "path": "pages/profile/map-settings",
+      "style": {
+        "navigationBarTitleText": "地图设置",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/debug/ble",
       "style": {
         "navigationBarTitleText": "BLE调试",
@@ -225,6 +233,13 @@
         "navigationBarTitleText": "时间线",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/battery/battery",
+      "style": {
+        "navigationBarTitleText": "电池数据",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {
@@ -233,5 +248,15 @@
     "navigationBarBackgroundColor": "#ffffff",
     "backgroundColor": "#060B14",
     "navigationStyle": "custom"
-  }
+  },
+	"condition" : { //模式配置，仅开发期间生效
+		"current": 0, //当前激活的模式(list 的索引项)
+		"list": [
+			{
+				"name": "", //模式名称
+				"path": "", //启动页面，必选
+				"query": "" //启动参数，在页面的onLoad函数里面得到
+			}
+		]
+	}
 }

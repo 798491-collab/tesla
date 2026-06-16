@@ -27,6 +27,14 @@ type TelemetryConfig struct {
 	TLSKeyFile      string
 	CACertFile      string
 	UseDefaultEngCA bool
+	CertSync        CertSyncConfig
+}
+
+type CertSyncConfig struct {
+	Enabled    bool
+	VCPKeysDir string
+	CertSrcDir string
+	CertsDir   string
 }
 
 type AIConfig struct {
@@ -144,6 +152,12 @@ func Load() *Config {
 			TLSKeyFile:      getEnv("TELEMETRY_TLS_KEY", ""),
 			CACertFile:      getEnv("TELEMETRY_CA_CERT", ""),
 			UseDefaultEngCA: getEnvAsBool("TELEMETRY_USE_ENG_CA", false),
+			CertSync: CertSyncConfig{
+				Enabled:    getEnvAsBool("CERT_SYNC_ENABLED", true),
+				VCPKeysDir: getEnv("CERT_SYNC_VCP_KEYS_DIR", "/opt/tesla-vcp/keys"),
+				CertSrcDir: getEnv("CERT_SYNC_SRC_DIR", ""),
+				CertsDir:   getEnv("CERT_SYNC_DST_DIR", ""),
+			},
 		},
 	}
 }

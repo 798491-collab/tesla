@@ -1,0 +1,2028 @@
+<template>
+	<div class="dashboard-container">
+		
+		<div class="left-map-panel">
+			<!-- #ifdef APP-PLUS -->
+			<div class="map-sandbox">
+				<tencent-navi-map ref="naviMapRef" class="native-map" @maploaded="onMapLoaded"></tencent-navi-map>
+			</div>
+			<!-- #endif -->
+			<!-- #ifndef APP-PLUS -->
+			<div class="map-sandbox">
+				<map 
+					id="mapBg" 
+					class="native-map" 
+					:latitude="navLat" 
+					:longitude="navLng" 
+					:markers="navMarkers"
+					:enable-traffic="true"
+					@updated="onMapUpdated"
+				/>
+			</div>
+			<!-- #endif -->
+
+			<!-- #ifndef APP-PLUS -->
+			<div v-if="navigationActive && currentStep" class="nav-guide-overlay">
+				<div class="nav-icon-box">
+					<Icon :name="currentStep.act_desc?.includes('左转') ? 'left' : 'right'" size="32" color="#3875F6" />
+					<text class="nav-distance-text">{{ currentStepDistance }}</text>
+				</div>
+				<div class="nav-text-box">
+					<text class="nav-instruction-text">{{ naviInstruction }}</text>
+					<text class="nav-next-road">{{ currentStep.road_name || '无名路' }}</text>
+				</div>
+			</div>
+			<!-- #endif -->
+
+			<div class="map-bottom-bar">
+				<div class="road-name-container">
+					<Icon name="location" size="16" color="#3875F6" />
+					<text class="road-name-text">{{ hasDestination ? destinationName : '当前车辆位置' }}</text>
+				</div>
+			</div>
+		</div>
+
+		<div class="right-info-panel">
+			
+			<div class="vehicle-model-area">
+				<!-- #ifdef APP-PLUS -->
+				<web-view ref="sceneWebview" class="tesla-scene-component" :src="sceneHtmlUrl"></web-view>
+				<!-- #endif -->
+				<!-- #ifndef APP-PLUS -->
+				<TeslaScene 
+					v-if="sceneState && sceneState.colors"
+					ref="teslaSceneRef"
+					class="tesla-scene-component"
+					:darkMode="true"
+					:state="sceneState"
+					:darkModeProp="true"
+					:licensePlate="licensePlateObj"
+					@onSceneReady="onModelLoaded"
+					@onDoorClick="onDoorClick"
+					@onTrunkClick="onTrunkClick"
+				/>
+				<!-- #endif -->
+				<div class="vehicle-motion-status">
+					<text class="motion-status-text" :style="{color: stateColor}">
+						{{ stateText }}
+					</text>
+					<text class="live-tag">{{ simActive ? '模拟中' : '实时3D' }}</text>
+					<text v-if="licensePlate" class="plate-tag">{{ licensePlate }}</text>
+				</div>
+			</div>
+
+			<div class="drive-data-board">
+				<div class="main-stats-row">
+					<div class="stat-block">
+						<text class="speed-value">{{ isCharging ? chargePowerDisplay : speed }}</text>
+						<text class="stat-unit">{{ isCharging ? 'kW' : 'km/h' }}</text>
+				</div>
+					<div class="stat-block">
+						<text class="gear-value">{{ currentGear }}</text>
+						<text class="stat-unit">档位</text>
+					</div>
+				</div>
+
+				<div class="sub-stats-row">
+					<div class="sub-stat-item">
+						<div class="battery-dot" :style="{ backgroundColor: batteryColor }"></div>
+						<text class="sub-stat-text">{{ batteryPercent }}% ({{ rangeKm }}km)</text>
+					</div>
+					<div class="sub-stat-item">
+						<text class="sub-stat-text">{{ outsideTempDisplay }}°C</text>
+					</div>
+				</div>
+			</div>
+
+			<div class="mini-music-bar">
+				<div class="music-content">
+					<Icon name="music" size="12" color="#8E8E93" />
+					<text class="music-title-text">{{ mediaDisplayText }}</text>
+				</div>
+				<div class="mini-progress-track">
+					<div class="mini-progress-fill" :style="{ width: mediaProgressPercent + '%' }"></div>
+				</div>
+			</div>
+
+			<!-- 模拟控制面板 -->
+			<scroll-view v-if="simPanelVisible" class="sim-panel" scroll-y="true" @click.stop>
+				<div class="sim-panel-header">
+					<text class="sim-panel-title">车辆模拟器</text>
+					<text class="sim-panel-close" @click="simPanelVisible = false">收起</text>
+				</div>
+
+				<!-- 启停 -->
+				<div class="sim-section">
+					<div class="sim-row">
+						<text class="sim-label">模拟引擎</text>
+						<text class="sim-btn" :class="simActive ? 'sim-btn-active' : ''" @click="toggleSim">{{ simActive ? '停止' : '启动' }}</text>
+					</div>
+				</div>
+
+				<!-- 档位 -->
+				<div class="sim-section">
+					<text class="sim-section-title">档位</text>
+					<div class="sim-gear-row">
+						<text v-for="g in ['P','R','N','D']" :key="g"
+							class="sim-gear-btn"
+							:class="simGear === g ? 'sim-gear-active' : ''"
+							@click="setSimGear(g)">{{ g }}</text>
+					</div>
+				</div>
+
+				<!-- 速度 -->
+				<div class="sim-section">
+					<text class="sim-section-title">目标速度: {{ simTargetSpeed }} km/h</text>
+					<div class="sim-slider-row">
+						<text class="sim-slider-label">0</text>
+						<div class="sim-slider-track">
+							<div class="sim-slider-fill" :style="{ width: (simTargetSpeed / 200 * 100) + '%' }"></div>
+						</div>
+						<text class="sim-slider-label">200</text>
+					</div>
+					<div class="sim-speed-presets">
+						<text class="sim-preset-btn" @click="simTargetSpeed = 30">30</text>
+						<text class="sim-preset-btn" @click="simTargetSpeed = 60">60</text>
+						<text class="sim-preset-btn" @click="simTargetSpeed = 80">80</text>
+						<text class="sim-preset-btn" @click="simTargetSpeed = 100">100</text>
+						<text class="sim-preset-btn" @click="simTargetSpeed = 120">120</text>
+					</div>
+				</div>
+
+				<!-- 充电 -->
+				<div class="sim-section">
+					<text class="sim-section-title">充电模拟</text>
+					<div class="sim-row">
+						<text class="sim-label">充电状态</text>
+						<text class="sim-btn" :class="simCharging ? 'sim-btn-active' : ''" @click="toggleSimCharging">{{ simCharging ? '充电中' : '未充电' }}</text>
+					</div>
+					<div v-if="simCharging" class="sim-row">
+						<text class="sim-label">充电功率</text>
+						<text class="sim-value">{{ simChargePower }} kW</text>
+					</div>
+				</div>
+
+				<!-- 电池 -->
+				<div class="sim-section">
+					<text class="sim-section-title">电量: {{ simBattery }}%</text>
+					<div class="sim-slider-row">
+						<text class="sim-slider-label">0</text>
+						<div class="sim-slider-track">
+							<div class="sim-slider-fill" :style="{ width: simBattery + '%' }"></div>
+						</div>
+						<text class="sim-slider-label">100</text>
+					</div>
+				</div>
+
+				<!-- 导航目的地 -->
+				<div class="sim-section">
+					<text class="sim-section-title">导航终点</text>
+					<div class="sim-dest-list">
+						<text v-for="(dest, idx) in simDestinations" :key="idx"
+							class="sim-dest-btn"
+							:class="simSelectedDest === idx ? 'sim-dest-active' : ''"
+							@click="selectSimDest(idx)">{{ dest.name }}</text>
+					</div>
+					<div class="sim-row" style="margin-top: 8px;">
+						<text class="sim-label">自定义坐标</text>
+						<text class="sim-btn" @click="showCustomDestInput = !showCustomDestInput">{{ showCustomDestInput ? '收起' : '输入' }}</text>
+					</div>
+					<div v-if="showCustomDestInput" class="sim-custom-dest">
+						<div class="sim-input-row">
+							<text class="sim-input-label">纬度</text>
+							<input class="sim-input" type="digit" v-model="customDestLat" placeholder="31.23" />
+						</div>
+						<div class="sim-input-row">
+							<text class="sim-input-label">经度</text>
+							<input class="sim-input" type="digit" v-model="customDestLng" placeholder="121.47" />
+						</div>
+						<div class="sim-input-row">
+							<text class="sim-input-label">名称</text>
+							<input class="sim-input" type="text" v-model="customDestName" placeholder="目的地名称" />
+						</div>
+						<text class="sim-btn sim-btn-full" @click="applyCustomDest">设为终点</text>
+					</div>
+					<div v-if="simHasDest" class="sim-row" style="margin-top: 8px;">
+						<text class="sim-label" style="flex:1;">{{ simDestName }}</text>
+						<text class="sim-btn sim-btn-danger" @click="clearSimDest">清除</text>
+					</div>
+				</div>
+
+				<!-- 场景 -->
+				<div class="sim-section">
+					<text class="sim-section-title">快速场景</text>
+					<div class="sim-scene-row">
+						<text class="sim-scene-btn" @click="applySimScene('parked')">驻车</text>
+						<text class="sim-scene-btn" @click="applySimScene('city')">城市</text>
+						<text class="sim-scene-btn" @click="applySimScene('highway')">高速</text>
+						<text class="sim-scene-btn" @click="applySimScene('charging')">充电</text>
+					</div>
+				</div>
+
+				<!-- 车门/窗 -->
+				<div class="sim-section">
+					<text class="sim-section-title">车门/窗</text>
+					<div class="sim-toggle-row">
+						<text class="sim-toggle-btn" :class="simDoors.fl ? 'sim-toggle-on' : ''" @click="simDoors.fl = !simDoors.fl">左前</text>
+						<text class="sim-toggle-btn" :class="simDoors.fr ? 'sim-toggle-on' : ''" @click="simDoors.fr = !simDoors.fr">右前</text>
+						<text class="sim-toggle-btn" :class="simDoors.rl ? 'sim-toggle-on' : ''" @click="simDoors.rl = !simDoors.rl">左后</text>
+						<text class="sim-toggle-btn" :class="simDoors.rr ? 'sim-toggle-on' : ''" @click="simDoors.rr = !simDoors.rr">右后</text>
+					</div>
+					<div class="sim-toggle-row" style="margin-top: 6px;">
+						<text class="sim-toggle-btn" :class="simTrunkOpen ? 'sim-toggle-on' : ''" @click="simTrunkOpen = !simTrunkOpen">后备箱</text>
+						<text class="sim-toggle-btn" :class="simFrunkOpen ? 'sim-toggle-on' : ''" @click="simFrunkOpen = !simFrunkOpen">前备箱</text>
+						<text class="sim-toggle-btn" :class="simLocked ? 'sim-toggle-on' : ''" @click="simLocked = !simLocked">{{ simLocked ? '已锁' : '未锁' }}</text>
+					</div>
+				</div>
+
+				<!-- 导航模拟信息 -->
+				<div v-if="simActive && simHasDest" class="sim-section">
+					<text class="sim-section-title">导航信息</text>
+					<div class="sim-row">
+						<text class="sim-label">距终点</text>
+						<text class="sim-value">{{ simDistToDest }}</text>
+					</div>
+					<div class="sim-row">
+						<text class="sim-label">预计到达</text>
+						<text class="sim-value">{{ simEtaDisplay }}</text>
+					</div>
+				</div>
+			</scroll-view>
+
+			<!-- 模拟面板触发按钮 -->
+			<div v-if="!simPanelVisible" class="sim-trigger" @click="simPanelVisible = true">
+				<text class="sim-trigger-text">SIM</text>
+			</div>
+
+		</div>
+	</div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { onShow, onHide } from '@dcloudio/uni-app'
+import { useVehicleStore } from '@/store/vehicle'
+import { useVehicleData, initVehicleData, destroyVehicleData, suspendVehicleData } from '@/utils/vehicle-data'
+import { getDisplayStateLabel, getDisplayStateColor } from '@/utils/vehicle-state'
+import { useMapSettingsStore } from '@/store/map-settings'
+import Icon from '@/components/Icon/Icon.vue'
+import TeslaScene from '@/components/model/TeslaScene.vue'
+
+// #ifdef APP-PLUS
+const naviModule = uni.requireNativePlugin('tencent-navi')
+let naviCallbacksRegistered = false
+let naviInitialized = false
+let naviInitStarted = false
+const mapReady = ref(false)
+
+function naviInitService() {
+	if (naviInitStarted || naviInitialized || !naviModule) return
+	naviInitStarted = true
+	const key = import.meta.env.VITE_TENCENT_MAP_KEY || ''
+	if (!key) {
+		console.error('[SplitDashboard] VITE_TENCENT_MAP_KEY 未配置')
+		naviInitStarted = false
+		return
+	}
+	naviModule.initNaviService({ key }, (result) => {
+		if (result && result.success) {
+			naviInitialized = true
+			console.log('[SplitDashboard] 导航服务初始化成功')
+			// 初始化成功后再注册回调
+			registerNaviCallbacks()
+		} else {
+			console.error('[SplitDashboard] 导航服务初始化失败:', result)
+			naviInitStarted = false
+		}
+	})
+}
+
+function registerNaviCallbacks() {
+	if (naviCallbacksRegistered || !naviModule) return
+	naviCallbacksRegistered = true
+	try {
+		if (typeof naviModule.onWillArriveDestination === 'function') {
+			naviModule.onWillArriveDestination(() => {
+				console.log('[SplitDashboard] 到达目的地，降级到地图模式')
+				uni.showToast({ title: '到达目的地', icon: 'success' })
+				try { naviStopNavi() } catch(e) {}
+				navigationActive.value = false
+				degradeToMap()
+			})
+		}
+	} catch(e) { console.warn('[SplitDashboard] onWillArriveDestination 注册失败:', e) }
+	try {
+		if (typeof naviModule.onNaviDataUpdate === 'function') {
+			naviModule.onNaviDataUpdate((data) => {
+				if (data && data.steps && data.steps.length > 0) {
+					navSteps.value = data.steps
+				}
+			})
+		}
+	} catch(e) { console.warn('[SplitDashboard] onNaviDataUpdate 注册失败:', e) }
+	try {
+		if (typeof naviModule.onNaviTTS === 'function') {
+			naviModule.onNaviTTS((text) => {
+				console.log('[SplitDashboard] TTS播报:', text)
+			})
+		}
+	} catch(e) {}
+	try {
+		if (typeof naviModule.onOffRoute === 'function') {
+			naviModule.onOffRoute(() => {
+				uni.showToast({ title: '已偏航', icon: 'none' })
+				navigationActive.value = false
+				degradeToMap()
+			})
+		}
+	} catch(e) { console.warn('[SplitDashboard] onOffRoute 注册失败:', e) }
+}
+
+function naviMoveCamera(lat, lng, zoom) {
+	if (!naviModule) return
+	naviModule.moveCamera({ latitude: lat, longitude: lng, zoom: zoom })
+}
+function naviRebindView() { if (naviModule) naviModule.rebindView() }
+function naviResumeView() { if (naviModule) naviModule.resumeView() }
+function naviPauseView() { if (naviModule) naviModule.pauseView() }
+function naviSetCompactMode(mode) { if (naviModule) naviModule.setCompactMode(mode) }
+function naviSetViewMargin(top, bottom, left, right) {
+	if (!naviModule) return
+	naviModule.setNaviViewMargin({ top, bottom, left, right })
+}
+function naviSearchRoute(params, onSuccess, onFail) {
+	if (!naviModule) return
+	naviModule.searchRoute(params, onSuccess, onFail)
+}
+function naviStartNavi(params, onFail) {
+	if (!naviModule) return
+	naviModule.startNavi(params, onFail)
+}
+function naviStopNavi() { if (naviModule) naviModule.stopNavi() }
+function naviDestroyNavi() { if (naviModule) naviModule.destroyNavi() }
+function naviResetNaviState() { if (naviModule) naviModule.resetNaviState() }
+function naviSetMapModeStyle(mapStyle) { if (naviModule) naviModule.setMapModeStyle({ mapStyle }) }
+function naviSetMapModeTrafficEnabled(enabled) { if (naviModule) naviModule.setMapModeTrafficEnabled({ enabled }) }
+function naviSetMapModeShowVehicleMarker(show) { if (naviModule) naviModule.setMapModeShowVehicleMarker({ show }) }
+function naviSetNaviModeStyle(mapStyle) { if (naviModule) naviModule.setNaviModeStyle({ mapStyle }) }
+function naviSetNaviDayNightMode(mode) { if (naviModule) naviModule.setNaviDayNightMode({ mode }) }
+function naviSetNaviModeTrafficEnabled(enabled) { if (naviModule) naviModule.setNaviModeTrafficEnabled({ enabled }) }
+function naviSetUIComponentConfig(config) { if (naviModule) naviModule.setUIComponentConfig(config) }
+function naviApplyMapSettings() { if (naviModule) naviModule.applyMapSettings() }
+function naviShowVehicleMarker(lat, lng, bearing) {
+	if (naviModule) naviModule.showVehicleMarker({ latitude: lat, longitude: lng, bearing })
+}
+function naviUpdateVehicleMarker(lat, lng, bearing) {
+	if (naviModule) naviModule.updateVehicleMarker({ latitude: lat, longitude: lng, bearing })
+}
+function naviRemoveVehicleMarker() { if (naviModule) naviModule.removeVehicleMarker() }
+function naviDebugGetMapInfo() { if (naviModule) naviModule.debugGetMapInfo((info) => { console.log('[SplitDashboard] debugMapInfo:', JSON.stringify(info)) }) }
+// #endif
+
+// #ifndef APP-PLUS
+function naviInitService() {}
+function registerNaviCallbacks() {}
+function naviMoveCamera() {}
+function naviRebindView() {}
+function naviResumeView() {}
+function naviPauseView() {}
+function naviSetCompactMode() {}
+function naviSetViewMargin() {}
+function naviSearchRoute() {}
+function naviStartNavi() {}
+function naviStopNavi() {}
+function naviDestroyNavi() {}
+function naviResetNaviState() {}
+function naviSetMapType() {}
+function naviSetTrafficEnabled() {}
+function naviSetUIComponentConfig() {}
+function naviSet3DImmersiveConfig() {}
+function naviApplyMapSettings() {}
+function naviSetShowVehicleMarker() {}
+function naviShowVehicleMarker() {}
+function naviUpdateVehicleMarker() {}
+function naviRemoveVehicleMarker() {}
+function naviDebugGetMapInfo() {}
+// #endif
+
+// 数据管道对接
+const vehicleStore = useVehicleStore()
+const vehicleDataStore = useVehicleData()
+const mapSettingsStore = useMapSettingsStore()
+const mapSettings = computed(() => mapSettingsStore.settings)
+const currentVehicle = computed(() => vehicleStore.currentVehicle)
+const vehicleData = computed(() => vehicleDataStore.data)
+const stateOutput = computed(() => vehicleDataStore.stateOutput)
+
+// 车辆状态（与首页对齐）
+const stateText = computed(() => getDisplayStateLabel(stateOutput.value, vehicleData.value))
+const stateColor = computed(() => getDisplayStateColor(stateOutput.value, vehicleData.value))
+
+// 基础行驶数据
+const speed = computed(() => Math.round(vehicleData.value?.speed || 0))
+const currentGear = computed(() => vehicleData.value?.gear || 'P')
+const batteryPercent = computed(() => Math.round(vehicleData.value?.soc || 0))
+const rangeKm = computed(() => Math.round(vehicleData.value?.range_km || 0))
+const outsideTempDisplay = computed(() => {
+	const t = vehicleData.value?.outside_temp
+	return t !== undefined && t !== null ? Math.round(t) : '--'
+})
+const batteryColor = computed(() => batteryPercent.value > 20 ? '#34C759' : '#FF3B30')
+
+// 充电数据
+const isCharging = computed(() => vehicleData.value?.charging === true)
+const chargePower = computed(() => vehicleData.value?.charge_power || 0)
+const chargePowerDisplay = computed(() => {
+	const p = Math.abs(chargePower.value)
+	return p > 0 ? (Math.round(p * 10) / 10) : 0
+})
+const chargeVoltage = computed(() => vehicleData.value?.voltage || 0)
+const chargeAmps = computed(() => vehicleData.value?.ampere || 0)
+
+// 媒体数据
+const nowPlayingTitle = computed(() => vehicleData.value?.now_playing_title || '')
+const nowPlayingArtist = computed(() => vehicleData.value?.now_playing_artist || '')
+const nowPlayingDuration = computed(() => vehicleData.value?.now_playing_duration || 0)
+const nowPlayingElapsed = computed(() => vehicleData.value?.now_playing_elapsed || 0)
+const mediaDisplayText = computed(() => {
+	if (!nowPlayingTitle.value) return '未在播放'
+	const artist = nowPlayingArtist.value
+	return artist ? `${nowPlayingTitle.value} - ${artist}` : nowPlayingTitle.value
+})
+const mediaProgressPercent = computed(() => {
+	if (!nowPlayingDuration.value || nowPlayingDuration.value <= 0) return 0
+	return Math.min(100, Math.round((nowPlayingElapsed.value / nowPlayingDuration.value) * 100))
+})
+
+// 地图定位与目的地
+const navLat = computed(() => vehicleData.value?.latitude || 31.2304)
+const navLng = computed(() => vehicleData.value?.longitude || 121.4737)
+const navHeading = computed(() => Math.round(vehicleData.value?.heading || 0))
+
+const hasDestination = computed(() => {
+	const lat = vehicleData.value?.destination_latitude
+	const lng = vehicleData.value?.destination_longitude
+	return !!(lat && lng && lat !== 0 && lng !== 0)
+})
+const destinationLat = computed(() => vehicleData.value?.destination_latitude || 0)
+const destinationLng = computed(() => vehicleData.value?.destination_longitude || 0)
+const destinationName = computed(() => vehicleData.value?.destination_name || '目的地')
+
+// 非 App 端降级 markers
+// #ifndef APP-PLUS
+const navMarkers = computed(() => {
+	const m = []
+	m.push({ id: 1, latitude: navLat.value, longitude: navLng.value, title: '我的车', rotate: navHeading.value })
+	if (hasDestination.value) {
+		m.push({ id: 2, latitude: destinationLat.value, longitude: destinationLng.value, title: destinationName.value })
+	}
+	return m
+})
+// #endif
+
+// 导航数据流控制
+const naviMapRef = ref(null)
+let mapLoaded = false
+let isSearchingRoute = false
+const navigationActive = ref(false)
+const navSteps = ref([])
+const currentStep = computed(() => navSteps.value[0] || null)
+const currentStepDistance = computed(() => {
+	if (!currentStep.value) return ''
+	const d = currentStep.value.distance || 0
+	return d >= 1000 ? (d/1000).toFixed(1)+'km' : d+'m'
+})
+const naviInstruction = computed(() => currentStep.value?.act_desc || '请沿当前道路继续行驶')
+
+function onMapLoaded() {
+	console.log('[SplitDashboard] 原生地图加载完成')
+	mapLoaded = true
+	mapReady.value = true
+	// #ifdef APP-PLUS
+	try { naviRebindView() } catch(e) {}
+	// 地图初始化需要时间，延迟应用设置确保 TencentMap 对象可用
+	setTimeout(() => {
+		syncMapSettingsToNative()
+		naviApplyMapSettings()
+		// 调试：输出地图内部信息
+		naviDebugGetMapInfo()
+	}, 500)
+	// #endif
+	if (navLat.value && navLng.value) {
+		setTimeout(() => {
+			naviMoveCamera(navLat.value, navLng.value, 16.0)
+		}, 500)
+	}
+	// 显示车辆位置标记
+	if (mapSettings.value.mapMode.showVehicleMarker && navLat.value && navLng.value) {
+		setTimeout(() => {
+			naviShowVehicleMarker(navLat.value, navLng.value, navHeading.value)
+		}, 1000)
+	}
+	// 地图就绪后，检查是否需要自动导航
+	if (hasDestination.value && !navigationActive.value) {
+		console.log('[SplitDashboard] 地图就绪，检测到目的地，1秒后自动导航')
+		setTimeout(() => startAutoNavi(), 1000)
+	}
+}
+
+/**
+ * 将JS层地图设置同步到原生端（不立即应用，等applyMapSettings统一应用）
+ */
+function syncMapSettingsToNative() {
+	// #ifdef APP-PLUS
+	try {
+		const s = mapSettings.value
+		// 地图模式设置
+		naviSetMapModeStyle(s.mapMode.mapStyle)
+		naviSetMapModeTrafficEnabled(s.mapMode.trafficEnabled)
+		naviSetMapModeShowVehicleMarker(s.mapMode.showVehicleMarker)
+		// 导航模式设置
+		naviSetNaviModeStyle(s.naviMode.mapStyle)
+		naviSetNaviDayNightMode(s.naviMode.dayNightMode)
+		naviSetNaviModeTrafficEnabled(s.naviMode.trafficEnabled)
+		naviSetUIComponentConfig(s.naviMode.uiComponentConfig)
+	} catch(e) {
+		console.error('[SplitDashboard] 同步地图设置失败:', e)
+	}
+	// #endif
+}
+
+function onMapUpdated() {
+	// 非 App 端的地图更新回调
+}
+
+// 模拟器状态（提前声明，供 watch 引用）
+const simActive = ref(false)
+
+// 车辆位置变化时移动地图（非导航状态下）+ 更新车辆位置标记
+watch(() => vehicleData.value?.latitude, (newLat) => {
+	if (newLat && vehicleData.value?.longitude && !navigationActive.value && mapLoaded) {
+		// 模拟器模式下不频繁移动相机（由 simTick 控制）
+		if (!simActive.value) {
+			naviMoveCamera(newLat, vehicleData.value.longitude, 16.0)
+		}
+	}
+	// 更新车辆位置标记（模拟器模式下由 simTick 控制）
+	if (!simActive.value && mapSettings.value.mapMode.showVehicleMarker && mapLoaded && newLat && vehicleData.value?.longitude) {
+		naviUpdateVehicleMarker(newLat, vehicleData.value.longitude, navHeading.value)
+	}
+})
+
+// 监听目的地变化，自动开启/关闭导航（模拟器激活时由 startSimNavi 控制，避免重复触发）
+watch(hasDestination, (hasDest) => {
+	if (!mapLoaded) return
+	if (simActive.value) return // 模拟器模式下由 startSimNavi 控制
+	if (hasDest && !navigationActive.value) {
+		console.log('[SplitDashboard] 检测到目的地，自动开启导航')
+		setTimeout(() => startAutoNavi(), 600)
+	} else if (!hasDest && navigationActive.value) {
+		console.log('[SplitDashboard] 目的地已清除，停止导航')
+		navigationActive.value = false
+		naviStopNavi()
+		degradeToMap()
+	}
+})
+
+// 监听地图设置变化，同步到原生端并统一应用
+watch(mapSettings, (newSettings) => {
+	if (!mapLoaded) return
+	// #ifdef APP-PLUS
+	try {
+		syncMapSettingsToNative()
+		naviApplyMapSettings()
+		// 车辆位置标记显隐
+		if (newSettings.mapMode.showVehicleMarker && navLat.value && navLng.value) {
+			naviShowVehicleMarker(navLat.value, navLng.value, navHeading.value)
+		} else {
+			naviRemoveVehicleMarker()
+		}
+	} catch(e) {
+		console.error('[SplitDashboard] 应用地图设置变化失败:', e)
+	}
+	// #endif
+}, { deep: true })
+
+// 目的地坐标变化时重新规划路线
+let lastDestKey = ''
+watch([destinationLat, destinationLng], ([lat, lng]) => {
+	const key = `${lat},${lng}`
+	if (key === lastDestKey || !hasDestination.value) return
+	if (navigationActive.value) {
+		console.log('[SplitDashboard] 目的地坐标变化，重新规划路线')
+		lastDestKey = key
+		naviStopNavi()
+		navigationActive.value = false
+		setTimeout(() => startAutoNavi(), 800)
+	}
+})
+
+/**
+ * 降级到纯地图模式
+ */
+function degradeToMap() {
+	navigationActive.value = false
+	try { naviStopNavi() } catch(e) {}
+	setTimeout(() => {
+		try { naviRebindView() } catch(e) {}
+		if (navLat.value && navLng.value) {
+			naviMoveCamera(navLat.value, navLng.value, 16.0)
+		}
+		// 恢复车辆位置标记
+		if (mapSettings.value.mapMode.showVehicleMarker && navLat.value && navLng.value) {
+			naviShowVehicleMarker(navLat.value, navLng.value, navHeading.value)
+		}
+	}, 300)
+}
+
+/**
+ * 自动导航：根据车辆目的地信息自动开启导航
+ */
+async function startAutoNavi(simulator = false) {
+	if (!mapLoaded || !hasDestination.value || navigationActive.value || isSearchingRoute) return
+
+	const startLat = navLat.value
+	const startLng = navLng.value
+	const endLat = destinationLat.value
+	const endLng = destinationLng.value
+
+	if (!startLat || !startLng || !endLat || !endLng) return
+
+	isSearchingRoute = true
+	lastDestKey = `${endLat},${endLng}`
+	console.log('[SplitDashboard] 自动导航: start(', startLat, startLng, ') end(', endLat, endLng, ')')
+
+	try {
+		naviMoveCamera(startLat, startLng, 16.0)
+	} catch (e) {
+		isSearchingRoute = false
+		return
+	}
+
+	await new Promise(r => setTimeout(r, 500))
+
+	let routeTimeout = setTimeout(() => {
+		if (isSearchingRoute) {
+			isSearchingRoute = false
+			uni.showToast({ title: '路线搜索超时', icon: 'none' })
+		}
+	}, 15000)
+
+	try {
+		naviSearchRoute({
+			start: { latitude: startLat, longitude: startLng },
+			end: { latitude: endLat, longitude: endLng }
+		}, (rs) => {
+			clearTimeout(routeTimeout)
+			if (!rs || !Array.isArray(rs) || rs.length === 0 || !rs[0].routeId) {
+				isSearchingRoute = false
+				uni.showToast({ title: '未找到路线', icon: 'none' })
+				return
+			}
+			isSearchingRoute = false
+			console.log('[SplitDashboard] 路线搜索成功, routeId:', rs[0].routeId)
+			try {
+				naviStartNavi({ routeId: rs[0].routeId, simulator }, (err) => {
+					console.error('[SplitDashboard] startNavi失败:', err)
+					navigationActive.value = false
+					uni.showToast({ title: '导航启动失败', icon: 'none' })
+				})
+				navigationActive.value = true
+				// 设置导航面板边距：左侧地图区域
+				try { naviSetCompactMode('compact') } catch(e) {}
+				try {
+					const margins = calcNaviMargins()
+					naviSetViewMargin(margins.top, margins.bottom, margins.left, margins.right)
+				} catch(e) {}
+			} catch (e) {
+				console.error('[SplitDashboard] startNavi异常:', e)
+				uni.showToast({ title: '导航启动异常', icon: 'none' })
+			}
+		}, (err) => {
+			clearTimeout(routeTimeout)
+			isSearchingRoute = false
+			console.error('[SplitDashboard] 路线搜索失败:', err)
+			uni.showToast({ title: '路线搜索失败', icon: 'none' })
+		})
+	} catch (e) {
+		clearTimeout(routeTimeout)
+		isSearchingRoute = false
+		console.error('[SplitDashboard] naviSearchRoute异常:', e)
+	}
+}
+
+/**
+ * 计算导航面板边距（物理像素）
+ * 左侧地图区域约占 55%，右侧面板约占 45%
+ */
+function calcNaviMargins() {
+	let dpr = 1
+	let statusBarH = 0
+	try {
+		const sys = uni.getSystemInfoSync()
+		dpr = sys.pixelRatio || 1
+		statusBarH = sys.statusBarHeight || 0
+	} catch(e) {}
+	const topDp = statusBarH + 5
+	const bottomDp = 50  // 底部路名栏高度
+	const leftDp = 0
+	const rightDp = 0
+	return {
+		top: Math.round(topDp * dpr),
+		bottom: Math.round(bottomDp * dpr),
+		left: Math.round(leftDp * dpr),
+		right: Math.round(rightDp * dpr)
+	}
+}
+
+// 3D 模型状态管理
+const teslaSceneRef = ref(null)
+const sceneWebview = ref(null)
+const modelLoaded = ref(false)
+
+// #ifdef APP-PLUS
+const sceneHtmlUrl = ref('/static/tesla-scene.html')
+// #endif
+
+function onModelLoaded() { 
+	modelLoaded.value = true 
+}
+
+// 向 webview 同步状态
+function pushStateToWebview() {
+	// #ifdef APP-PLUS
+	if (!sceneWebview.value) return
+	try {
+		const stateJson = JSON.stringify(sceneState.value)
+		sceneWebview.value.evalJS(`window.updateState && window.updateState('${stateJson.replace(/'/g, "\\'")}')`)
+		const plateJson = JSON.stringify(licensePlateObj.value)
+		sceneWebview.value.evalJS(`window.updateLicensePlate && window.updateLicensePlate('${plateJson.replace(/'/g, "\\'")}')`)
+		sceneWebview.value.evalJS(`window.updateDarkMode && window.updateDarkMode(true)`)
+	} catch(e) {}
+	// #endif
+}
+
+function onDoorClick(doorKey) { 
+	if (sceneState.value?.doors) {
+		sceneState.value.doors[doorKey] = sceneState.value.doors[doorKey] > 0.5 ? 0 : 1 
+		pushStateToWebview()
+	}
+}
+
+function onTrunkClick() { 
+	if (sceneState.value?.trunks) {
+		sceneState.value.trunks.rear = sceneState.value.trunks.rear > 0.5 ? 0 : 1 
+		pushStateToWebview()
+	}
+}
+
+const licensePlateObj = computed(() => {
+	const plate = vehicleStore.getLicensePlate(currentVehicle.value?.vin) || ''
+	return { front: plate, rear: plate }
+})
+
+const licensePlate = computed(() => vehicleStore.getLicensePlate(currentVehicle.value?.vin) || '')
+
+const sceneState = ref({
+	doors: { frontLeft: 0, frontRight: 0, rearLeft: 0, rearRight: 0 },
+	trunks: { rear: 0, front: 0 },
+	lights: {
+		drl: false, headlightLow: false, headlightHigh: false,
+		turnLeft: false, turnRight: false, tailLight: false,
+		brakeLight: false, frontFog: false, rearFog: false,
+		hazard: false
+	},
+	charging: false, gear: 'P', speed: 0, soc: 0,
+	locked: true, mirrorFolded: false, sentryMode: false, climateOn: false,
+	chargeLimitSoc: 0, chargePortOpen: 0,
+	colors: {
+		carpaint: '#1a1a2e',
+		interior: '#2a2a2a',
+		tire: '#1a1a1a',
+		caliper: '#00a651',
+		leather: '#1a1a1a',
+		carpet: '#111111',
+		chrome: '#c0c0c0',
+		glass: '#3a5a5a',
+		rim: '#c0c0c0',
+	}
+})
+
+function syncVehicleDataToScene() {
+	const d = vehicleData.value
+	if (!d || !Object.keys(d).length) return
+	const s = sceneState.value
+
+	const gear = d.gear || d.shift_state || 'P'
+	if (['P', 'R', 'N', 'D'].includes(gear)) {
+		s.gear = gear
+	}
+	if (d.speed !== undefined && d.speed !== null) {
+		s.speed = Number(d.speed)
+	}
+
+	const isVehicleCharging = d.charging === true || d.charging_state === 'Charging'
+		|| d.charge_state === 'Charging'
+	s.charging = isVehicleCharging
+
+	// 车门
+	s.doors.frontLeft = d.door_fl ? 1 : 0
+	s.doors.frontRight = d.door_fr ? 1 : 0
+	s.doors.rearLeft = d.door_rl ? 1 : 0
+	s.doors.rearRight = d.door_rr ? 1 : 0
+
+	// 后备箱/前备箱
+	s.trunks.rear = d.trunk_open ? 1 : 0
+	s.trunks.front = d.frunk_open ? 1 : 0
+
+	s.locked = d.locked !== false
+	s.mirrorFolded = d.mirror_folded === true
+	s.sentryMode = d.sentry_mode === true
+	s.climateOn = d.is_ac_on === true
+
+	if (d.soc !== undefined && d.soc !== null) {
+		s.soc = Number(d.soc)
+	}
+	if (d.charge_limit_soc !== undefined && d.charge_limit_soc !== null) {
+		s.chargeLimitSoc = Number(d.charge_limit_soc)
+	}
+
+	// 充电口
+	if (d.charge_port_door_open !== undefined) {
+		s.chargePortOpen = d.charge_port_door_open ? 1 : 0
+	}
+
+	// 灯光
+	if (isVehicleCharging) {
+		// 充电模式灯光由 TeslaScene 内部处理
+	} else {
+		const hasTelemetryLights = d.lights_high_beams !== undefined
+			|| d.lights_hazards_active !== undefined
+			|| d.lights_turn_signal !== undefined
+
+		if (hasTelemetryLights) {
+			s.lights.headlightHigh = d.lights_high_beams === true
+			s.lights.hazard = d.lights_hazards_active === true
+				|| d.lights_turn_signal === 'hazard'
+
+			if (d.lights_turn_signal === 'left') {
+				s.lights.turnLeft = true
+				s.lights.turnRight = false
+			} else if (d.lights_turn_signal === 'right') {
+				s.lights.turnLeft = false
+				s.lights.turnRight = true
+			} else {
+				s.lights.turnLeft = false
+				s.lights.turnRight = false
+			}
+
+			if (gear === 'D' || gear === 'R') {
+				s.lights.headlightLow = true
+				s.lights.tailLight = true
+				s.lights.brakeLight = gear === 'R'
+				s.lights.drl = false
+				s.lights.frontFog = false
+				s.lights.rearFog = false
+			} else if (gear === 'N') {
+				s.lights.drl = true
+				s.lights.headlightLow = false
+				s.lights.tailLight = false
+				s.lights.brakeLight = false
+				s.lights.frontFog = false
+				s.lights.rearFog = false
+			} else {
+				s.lights.drl = false
+				s.lights.headlightLow = false
+				s.lights.tailLight = false
+				s.lights.brakeLight = false
+				s.lights.frontFog = false
+				s.lights.rearFog = false
+			}
+		} else {
+			if (gear === 'D' || gear === 'R') {
+				s.lights.headlightLow = true
+				s.lights.tailLight = true
+				s.lights.brakeLight = gear === 'R'
+				s.lights.drl = false
+				s.lights.headlightHigh = false
+				s.lights.frontFog = false
+				s.lights.rearFog = false
+				s.lights.turnLeft = false
+				s.lights.turnRight = false
+				s.lights.hazard = false
+			} else if (gear === 'N') {
+				s.lights.drl = true
+				s.lights.headlightLow = false
+				s.lights.headlightHigh = false
+				s.lights.tailLight = false
+				s.lights.brakeLight = false
+				s.lights.frontFog = false
+				s.lights.rearFog = false
+				s.lights.turnLeft = false
+				s.lights.turnRight = false
+				s.lights.hazard = false
+			} else {
+				s.lights.drl = false
+				s.lights.headlightLow = false
+				s.lights.headlightHigh = false
+				s.lights.tailLight = false
+				s.lights.brakeLight = false
+				s.lights.frontFog = false
+				s.lights.rearFog = false
+				s.lights.turnLeft = false
+				s.lights.turnRight = false
+				s.lights.hazard = false
+			}
+		}
+
+		if (s.sentryMode && gear === 'P' && !s.lights.hazard) {
+			s.lights.hazard = true
+		}
+	}
+
+	// 同步状态到 webview
+	pushStateToWebview()
+}
+
+watch(() => vehicleData.value, () => { syncVehicleDataToScene() }, { deep: true })
+
+// 页面生命周期控制
+onMounted(() => {
+	// #ifdef APP-PLUS
+	plus.screen.lockOrientation('landscape-primary')
+	plus.navigator.setFullscreen(true)
+	plus.navigator.hideSystemNavigation()
+	naviInitService()
+	// #endif
+	uni.setKeepScreenOn({ keepScreenOn: true })
+	syncVehicleDataToScene()
+	if (currentVehicle.value?.vin) {
+		initVehicleData(currentVehicle.value.vin)
+	}
+	// webview 加载较慢，延迟推送初始状态
+	setTimeout(() => { pushStateToWebview() }, 2000)
+	setTimeout(() => { pushStateToWebview() }, 5000)
+})
+
+onShow(() => {
+	if (currentVehicle.value?.vin) {
+		initVehicleData(currentVehicle.value.vin)
+	}
+	// #ifdef APP-PLUS
+	try { plus.screen.lockOrientation('landscape-primary') } catch(e) {}
+	try { plus.navigator.setFullscreen(true) } catch(e) {}
+	try { plus.navigator.hideSystemNavigation() } catch(e) {}
+	if (!naviInitialized) {
+		naviInitService()
+	} else if (mapReady.value) {
+		try { naviResumeView() } catch(e) {}
+		try { naviRebindView() } catch(e) {}
+		if (navigationActive.value && hasDestination.value) {
+			navigationActive.value = false
+			setTimeout(() => startAutoNavi(), 600)
+		} else {
+			navigationActive.value = false
+			setTimeout(() => {
+				if (navLat.value && navLng.value) {
+					try { naviMoveCamera(navLat.value, navLng.value, 16.0) } catch(e) {}
+				}
+			}, 500)
+		}
+	}
+	// #endif
+})
+
+onHide(() => {
+	// #ifdef APP-PLUS
+	try { plus.screen.lockOrientation('portrait-primary') } catch(e) {}
+	try { plus.navigator.setFullscreen(false) } catch(e) {}
+	try { plus.navigator.showSystemNavigation() } catch(e) {}
+	try { naviPauseView() } catch(e) {}
+	if (navigationActive.value) {
+		try { naviStopNavi() } catch(e) {}
+	}
+	// #endif
+	suspendVehicleData()
+})
+
+onUnmounted(() => {
+	// 清理模拟器
+	stopSim()
+	// #ifdef APP-PLUS
+	plus.screen.lockOrientation('portrait-primary')
+	plus.navigator.setFullscreen(false)
+	plus.navigator.showSystemNavigation()
+	mapReady.value = false
+	mapLoaded = false
+	naviInitStarted = false
+	try { naviDestroyNavi() } catch(e) {}
+	// #endif
+	try { uni.setKeepScreenOn({ keepScreenOn: false }) } catch(e) {}
+	destroyVehicleData()
+})
+
+// ===== 车辆模拟引擎 =====
+const simPanelVisible = ref(false)
+let simTimer = null
+
+// 模拟状态
+const simGear = ref('P')
+const simTargetSpeed = ref(0)
+const simCurrentSpeed = ref(0)
+const simBattery = ref(78)
+const simCharging = ref(false)
+const simChargePower = ref(50)
+const simInsideTemp = ref(22.5)
+const simOutsideTemp = ref(18.0)
+const simLat = ref(31.2304)
+const simLng = ref(121.4737)
+const simHeading = ref(0)
+const simOdometer = ref(12345.6)
+
+// 车门/窗/锁
+const simDoors = ref({ fl: false, fr: false, rl: false, rr: false })
+const simTrunkOpen = ref(false)
+const simFrunkOpen = ref(false)
+const simLocked = ref(true)
+
+// 导航目的地
+const simSelectedDest = ref(-1)
+const simDestLat = ref(0)
+const simDestLng = ref(0)
+const simDestName = ref('')
+const showCustomDestInput = ref(false)
+const customDestLat = ref('')
+const customDestLng = ref('')
+const customDestName = ref('')
+
+// 预设目的地（上海地区真实地标）
+const simDestinations = [
+	{ name: '上海虹桥站', lat: 31.1944, lng: 121.3200 },
+	{ name: '浦东国际机场', lat: 31.1443, lng: 121.8083 },
+	{ name: '外滩', lat: 31.2400, lng: 121.4900 },
+	{ name: '陆家嘴', lat: 31.2350, lng: 121.5015 },
+	{ name: '迪士尼乐园', lat: 31.1434, lng: 121.6580 },
+	{ name: '人民广场', lat: 31.2320, lng: 121.4730 },
+]
+
+const simHasDest = computed(() => !!(simDestLat.value && simDestLng.value))
+const simDistToDest = computed(() => {
+	if (!simHasDest.value) return '--'
+	const d = haversineKm(simLat.value, simLng.value, simDestLat.value, simDestLng.value)
+	return d < 1 ? Math.round(d * 1000) + 'm' : d.toFixed(1) + 'km'
+})
+const simEtaDisplay = computed(() => {
+	if (!simHasDest.value || simCurrentSpeed.value < 1) return '--'
+	const d = haversineKm(simLat.value, simLng.value, simDestLat.value, simDestLng.value)
+	const mins = Math.round((d / simCurrentSpeed.value) * 60)
+	if (mins < 60) return mins + '分钟'
+	return Math.floor(mins / 60) + '时' + (mins % 60) + '分'
+})
+
+// 模拟导航步骤（非APP端降级用）
+const simNavSteps = ref([])
+const simCurrentNavStep = ref(0)
+const simNavStepProgress = ref(0)
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+	const R = 6371
+	const dLat = (lat2 - lat1) * Math.PI / 180
+	const dLng = (lng2 - lng1) * Math.PI / 180
+	const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+	return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// 生成模拟导航步骤（非APP端降级用）
+function generateSimNavSteps(startLat, startLng, endLat, endLng) {
+	const totalDist = haversineKm(startLat, startLng, endLat, endLng)
+	const steps = []
+	const numSteps = Math.max(3, Math.min(8, Math.round(totalDist / 3)))
+	const dLat = (endLat - startLat) / numSteps
+	const dLng = (endLng - startLng) / numSteps
+	const directions = ['请沿当前道路继续行驶', '前方左转', '前方右转', '稍向左转', '稍向右转', '直行通过路口', '进入主路']
+	const roads = ['世纪大道', '延安高架路', '内环高架路', '沪闵高架路', '南北高架路', '中环路', '外环路', '龙东大道', '张杨路', '南京东路']
+
+	for (let i = 0; i < numSteps; i++) {
+		const dist = (totalDist / numSteps) * 1000
+		steps.push({
+			act_desc: i === 0 ? '出发' : i === numSteps - 1 ? '到达目的地' : directions[Math.floor(Math.random() * directions.length)],
+			road_name: i === numSteps - 1 ? '目的地' : roads[Math.floor(Math.random() * roads.length)],
+			distance: Math.round(dist * (0.8 + Math.random() * 0.4)),
+			waypoint_lat: startLat + dLat * (i + 1),
+			waypoint_lng: startLng + dLng * (i + 1),
+		})
+	}
+	return steps
+}
+
+// 模拟数据注入到 vehicleDataStore（reactive 对象，直接赋值触发响应式更新）
+function injectSimData() {
+	const isDriving = simGear.value === 'D' || simGear.value === 'R'
+	const soc = Math.round(simBattery.value)
+	const rangeKm = Math.round(soc * 5.8 * 10) / 10
+	const isCharging = simCharging.value
+	const chargePower = isCharging ? simChargePower.value : 0
+	const voltage = isCharging ? 380 : 0
+	const ampere = isCharging ? Math.round(chargePower / 380 * 1000) / 10 : 0
+
+	const newData = {
+		...vehicleDataStore.data,
+		// 行驶数据
+		speed: Math.round(simCurrentSpeed.value * 10) / 10,
+		gear: simGear.value,
+		shift_state: simGear.value,
+		power: isDriving ? Math.round(simCurrentSpeed.value * 0.15 * 10) / 10 : 0,
+		pedal_position: simCurrentSpeed.value > 0 ? Math.min(1, simCurrentSpeed.value / simTargetSpeed.value) : 0,
+		brake_pedal: 0,
+		drive_rail: 'dual',
+		cruise_set_speed: null,
+
+		// 电池/充电
+		soc,
+		battery_level: soc,
+		usable_soc: soc,
+		range_km: rangeKm,
+		energy_remaining: Math.round(soc * 0.75 * 10) / 10,
+		battery_temp: isCharging ? 32 + Math.random() * 5 : 25 + Math.random() * 3,
+		charging: isCharging,
+		charging_state: isCharging ? 'Charging' : 'Idle',
+		charge_state: isCharging ? 'Charging' : 'Idle',
+		charge_power: chargePower,
+		charger_power: chargePower,
+		dc_charging_power: isCharging ? chargePower : 0,
+		ac_charging_power: 0,
+		voltage,
+		charger_voltage: voltage,
+		pack_voltage: isCharging ? 380 : 0,
+		ampere,
+		charge_amps: ampere,
+		pack_current: isCharging ? ampere : 0,
+		fast_charger_present: isCharging && soc < 80,
+		supercharging: isCharging && soc < 80,
+		charge_port_door_open: isCharging,
+		charge_limit_soc: 80,
+		minutes_to_full: isCharging ? Math.round((80 - soc) / (chargePower / 75) * 60) : 0,
+		battery_heater_on: false,
+		added_energy: 0,
+
+		// GPS
+		latitude: simLat.value,
+		longitude: simLng.value,
+		heading: Math.round(simHeading.value),
+		gps_state: 3,
+
+		// 温控
+		inside_temp: Math.round((simInsideTemp.value + (Math.random() - 0.5) * 0.3) * 10) / 10,
+		outside_temp: Math.round((simOutsideTemp.value + (Math.random() - 0.5) * 0.5) * 10) / 10,
+		is_ac_on: true,
+		hvac_power: true,
+		hvac_ac_enabled: true,
+		hvac_auto_mode: true,
+		hvac_fan_speed: 3,
+		driver_temp_setting: 22,
+		passenger_temp_setting: 22,
+		defrost_mode: false,
+		steering_wheel_heater: false,
+		climate_keeper_mode: false,
+
+		// 车门/窗/锁
+		locked: simLocked.value,
+		door_fl: simDoors.value.fl,
+		door_fr: simDoors.value.fr,
+		door_rl: simDoors.value.rl,
+		door_rr: simDoors.value.rr,
+		door_open: simDoors.value.fl || simDoors.value.fr || simDoors.value.rl || simDoors.value.rr,
+		trunk_open: simTrunkOpen.value,
+		frunk_open: simFrunkOpen.value,
+		fd_window: false,
+		fp_window: false,
+		rd_window: false,
+		rp_window: false,
+		windows_open: false,
+		mirror_folded: false,
+		sentry_mode: false,
+
+		// 座椅加热
+		seat_heater_left: 0,
+		seat_heater_right: 0,
+		seat_heater_rear_left: 0,
+		seat_heater_rear_right: 0,
+		seat_heater_rear_center: 0,
+
+		// 里程
+		odometer_km: simOdometer.value,
+
+		// 灯光
+		lights_high_beams: false,
+		lights_hazards_active: false,
+		lights_turn_signal: 'off',
+
+		// 驾驶状态
+		driving: isDriving,
+		center_display_state: 1,
+
+		// 轮胎
+		tpms_pressure_fl: 2.9,
+		tpms_pressure_fr: 2.9,
+		tpms_pressure_rl: 2.8,
+		tpms_pressure_rr: 2.8,
+	}
+
+	// 导航目的地
+	if (simHasDest.value) {
+		newData.destination_latitude = simDestLat.value
+		newData.destination_longitude = simDestLng.value
+		newData.destination_name = simDestName.value
+		newData.miles_to_arrival = haversineKm(simLat.value, simLng.value, simDestLat.value, simDestLng.value) * 0.621371
+		newData.minutes_to_arrival = simCurrentSpeed.value > 1 ? Math.round((haversineKm(simLat.value, simLng.value, simDestLat.value, simDestLng.value) / simCurrentSpeed.value) * 60) : 999
+	} else {
+		newData.destination_latitude = 0
+		newData.destination_longitude = 0
+		newData.destination_name = ''
+	}
+
+	// 直接赋值触发 reactive 响应式更新
+	vehicleDataStore.data = newData
+	vehicleDataStore.source = 'ble'
+	vehicleDataStore.bleConnected = true
+}
+
+// 模拟器主循环
+function simTick() {
+	// 速度模拟
+	if (simGear.value === 'D') {
+		if (simCurrentSpeed.value < simTargetSpeed.value) {
+			simCurrentSpeed.value = Math.min(simCurrentSpeed.value + 2 + Math.random() * 3, simTargetSpeed.value)
+		} else if (simCurrentSpeed.value > simTargetSpeed.value) {
+			simCurrentSpeed.value = Math.max(simCurrentSpeed.value - 3 - Math.random() * 2, simTargetSpeed.value)
+		}
+		simCurrentSpeed.value += (Math.random() - 0.5) * 1.5
+		simCurrentSpeed.value = Math.max(0, simCurrentSpeed.value)
+	} else if (simGear.value === 'R') {
+		simCurrentSpeed.value = Math.min(simCurrentSpeed.value + 1, 10)
+	} else {
+		if (simCurrentSpeed.value > 0.5) {
+			simCurrentSpeed.value = Math.max(0, simCurrentSpeed.value - 2 - Math.random() * 2)
+		} else {
+			simCurrentSpeed.value = 0
+		}
+	}
+
+	// GPS 轨迹模拟
+	if (simCurrentSpeed.value > 0.5) {
+		const speedMs = simCurrentSpeed.value / 3.6
+		const dt = 0.2
+		const distM = speedMs * dt
+		const dLat = (distM / 111000) * Math.cos(simHeading.value * Math.PI / 180)
+		const dLng = (distM / (111000 * Math.cos(simLat.value * Math.PI / 180))) * Math.sin(simHeading.value * Math.PI / 180)
+		simLat.value = Math.round((simLat.value + dLat) * 100000) / 100000
+		simLng.value = Math.round((simLng.value + dLng) * 100000) / 100000
+		simOdometer.value += distM / 1000
+
+		// 导航模式下，朝目的地方向微调航向
+		if (simHasDest.value) {
+			const targetBearing = bearingTo(simLat.value, simLng.value, simDestLat.value, simDestLng.value)
+			let diff = targetBearing - simHeading.value
+			while (diff > 180) diff -= 360
+			while (diff < -180) diff += 360
+			simHeading.value += diff * 0.03 + (Math.random() - 0.5) * 2
+			if (simHeading.value < 0) simHeading.value += 360
+			if (simHeading.value >= 360) simHeading.value -= 360
+		} else {
+			simHeading.value += (Math.random() - 0.5) * 3
+			if (simHeading.value < 0) simHeading.value += 360
+			if (simHeading.value >= 360) simHeading.value -= 360
+		}
+
+		// 更新原生地图车辆位置标记
+		if (mapLoaded) {
+			naviUpdateVehicleMarker(simLat.value, simLng.value, Math.round(simHeading.value))
+		}
+	}
+
+	// 电池消耗/充电
+	if (simCharging.value) {
+		simBattery.value = Math.min(100, simBattery.value + 0.02 * (simChargePower.value / 50))
+	} else if (simCurrentSpeed.value > 1) {
+		const consumption = (simCurrentSpeed.value / 3.6 * 0.2) * 0.15 / 100
+		const batteryCapacity = 75
+		simBattery.value = Math.max(0, simBattery.value - (consumption / batteryCapacity) * 100)
+	}
+
+	// 导航到达检测
+	if (simHasDest.value && simCurrentSpeed.value > 0.5) {
+		const dist = haversineKm(simLat.value, simLng.value, simDestLat.value, simDestLng.value)
+		if (dist < 0.05) {
+			uni.showToast({ title: '已到达目的地: ' + simDestName.value, icon: 'success' })
+			clearSimDest()
+		}
+	}
+
+	// #ifndef APP-PLUS
+	// 非APP端：用模拟导航步骤驱动导航浮层显示
+	if (simHasDest.value && simNavSteps.value.length > 0) {
+		simNavStepProgress.value += 0.005
+		if (simNavStepProgress.value >= 1) {
+			simNavStepProgress.value = 0
+			simCurrentNavStep.value++
+			if (simCurrentNavStep.value >= simNavSteps.value.length) {
+				simCurrentNavStep.value = simNavSteps.value.length - 1
+			}
+		}
+		const remaining = simNavSteps.value.slice(simCurrentNavStep.value)
+		if (remaining.length > 0) {
+			navSteps.value = remaining.map((s, i) => ({
+				...s,
+				distance: i === 0 ? Math.round(s.distance * (1 - simNavStepProgress.value)) : s.distance,
+			}))
+		}
+		navigationActive.value = true
+	}
+	// #endif
+
+	injectSimData()
+}
+
+function bearingTo(lat1, lng1, lat2, lng2) {
+	const dLng = (lng2 - lng1) * Math.PI / 180
+	const la1 = lat1 * Math.PI / 180
+	const la2 = lat2 * Math.PI / 180
+	const y = Math.sin(dLng) * Math.cos(la2)
+	const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLng)
+	let bearing = Math.atan2(y, x) * 180 / Math.PI
+	return (bearing + 360) % 360
+}
+
+function toggleSim() {
+	if (simActive.value) {
+		stopSim()
+	} else {
+		startSim()
+	}
+}
+
+function startSim() {
+	if (simTimer) return
+	simActive.value = true
+	if (!simLat.value || (simLat.value === 31.2304 && simLng.value === 121.4737)) {
+		simLat.value = 31.2304
+		simLng.value = 121.4737
+		simHeading.value = Math.random() * 360
+	}
+	simTimer = setInterval(simTick, 200)
+	injectSimData()
+	// 在原生地图上显示模拟车辆位置
+	if (mapLoaded && mapSettings.value.mapMode.showVehicleMarker) {
+		naviShowVehicleMarker(simLat.value, simLng.value, Math.round(simHeading.value))
+	}
+}
+
+function stopSim() {
+	if (simTimer) {
+		clearInterval(simTimer)
+		simTimer = null
+	}
+	simActive.value = false
+	simCurrentSpeed.value = 0
+	// 停止导航
+	if (navigationActive.value) {
+		navigationActive.value = false
+		naviStopNavi()
+	}
+	// 恢复数据源，清理模拟器注入的数据
+	vehicleDataStore.bleConnected = false
+	vehicleDataStore.source = 'ws'
+	// 清理 state/realtime 层，让 WS 重新填充
+	vehicleDataStore.realtime = {}
+	vehicleDataStore.realtimeUpdatedAt = 0
+	vehicleDataStore.realtimeSource = null
+	// 重新从 WS 获取初始状态
+	if (vehicleDataStore.vin) {
+		initVehicleData(vehicleDataStore.vin)
+	}
+}
+
+function setSimGear(g) {
+	simGear.value = g
+	if (g === 'P' || g === 'N') {
+		simTargetSpeed.value = 0
+	} else if (g === 'D' && simTargetSpeed.value === 0) {
+		simTargetSpeed.value = 60
+	} else if (g === 'R') {
+		simTargetSpeed.value = 5
+	}
+	if (g !== 'P') {
+		simCharging.value = false
+	}
+}
+
+function toggleSimCharging() {
+	simCharging.value = !simCharging.value
+	if (simCharging.value) {
+		simGear.value = 'P'
+		simTargetSpeed.value = 0
+		simCurrentSpeed.value = 0
+		simChargePower.value = Math.round(30 + Math.random() * 90)
+	}
+}
+
+// 启动模拟导航（走原生插件，simulator:true 启动完整导航模拟）
+function startSimNavi() {
+	if (!simHasDest.value || !mapLoaded) return
+
+	// #ifdef APP-PLUS
+	// APP端：走原生导航插件，使用 simulator:true 让 SDK 自动模拟沿路线行驶
+	console.log('[SplitDashboard] 模拟导航: 原生插件导航到', simDestName.value, simDestLat.value, simDestLng.value)
+	// 先注入目的地数据，让 startAutoNavi 能读到
+	injectSimData()
+	// 延迟触发原生导航（等待数据注入生效）
+	setTimeout(() => {
+		if (!navigationActive.value) {
+			startAutoNavi(true) // simulator = true
+		}
+	}, 300)
+	// #endif
+
+	// #ifndef APP-PLUS
+	// 非APP端：用模拟导航步骤
+	simNavSteps.value = generateSimNavSteps(simLat.value, simLng.value, simDestLat.value, simDestLng.value)
+	simCurrentNavStep.value = 0
+	simNavStepProgress.value = 0
+	navigationActive.value = true
+	// #endif
+}
+
+function selectSimDest(idx) {
+	if (simSelectedDest.value === idx) {
+		clearSimDest()
+		return
+	}
+	simSelectedDest.value = idx
+	const dest = simDestinations[idx]
+	simDestLat.value = dest.lat
+	simDestLng.value = dest.lng
+	simDestName.value = dest.name
+	showCustomDestInput.value = false
+	// 自动切到D档
+	if (simGear.value === 'P') {
+		setSimGear('D')
+	}
+	// 启动模拟器（如果还没启动）
+	if (!simActive.value) {
+		startSim()
+	}
+	// 启动导航
+	setTimeout(() => startSimNavi(), 200)
+}
+
+function applyCustomDest() {
+	const lat = parseFloat(customDestLat.value)
+	const lng = parseFloat(customDestLng.value)
+	if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+		uni.showToast({ title: '坐标格式错误', icon: 'none' })
+		return
+	}
+	simSelectedDest.value = -1
+	simDestLat.value = lat
+	simDestLng.value = lng
+	simDestName.value = customDestName.value || '自定义目的地'
+	if (simGear.value === 'P') {
+		setSimGear('D')
+	}
+	if (!simActive.value) {
+		startSim()
+	}
+	showCustomDestInput.value = false
+	// 启动导航
+	setTimeout(() => startSimNavi(), 200)
+}
+
+function clearSimDest() {
+	simDestLat.value = 0
+	simDestLng.value = 0
+	simDestName.value = ''
+	simSelectedDest.value = -1
+	simNavSteps.value = []
+	simCurrentNavStep.value = 0
+	simNavStepProgress.value = 0
+	navigationActive.value = false
+	navSteps.value = []
+	// 停止原生导航
+	naviStopNavi()
+	degradeToMap()
+	// 清除注入数据中的目的地
+	if (simActive.value) {
+		injectSimData()
+	}
+}
+
+function applySimScene(scene) {
+	switch (scene) {
+		case 'parked':
+			simGear.value = 'P'
+			simTargetSpeed.value = 0
+			simCurrentSpeed.value = 0
+			simCharging.value = false
+			simLocked.value = true
+			simDoors.value = { fl: false, fr: false, rl: false, rr: false }
+			simTrunkOpen.value = false
+			simFrunkOpen.value = false
+			break
+		case 'city':
+			simGear.value = 'D'
+			simTargetSpeed.value = 40 + Math.round(Math.random() * 30)
+			simCharging.value = false
+			simLocked.value = true
+			simDoors.value = { fl: false, fr: false, rl: false, rr: false }
+			break
+		case 'highway':
+			simGear.value = 'D'
+			simTargetSpeed.value = 100 + Math.round(Math.random() * 30)
+			simCharging.value = false
+			simLocked.value = true
+			simDoors.value = { fl: false, fr: false, rl: false, rr: false }
+			break
+		case 'charging':
+			simGear.value = 'P'
+			simTargetSpeed.value = 0
+			simCurrentSpeed.value = 0
+			simCharging.value = true
+			simChargePower.value = Math.round(50 + Math.random() * 70)
+			simLocked.value = true
+			simDoors.value = { fl: false, fr: false, rl: false, rr: false }
+			simTrunkOpen.value = false
+			simFrunkOpen.value = false
+			break
+	}
+	if (!simActive.value) {
+		startSim()
+	}
+}
+
+// 页面卸载时清理模拟器 - 已合并到上方 onUnmounted
+
+// ===== 车辆模拟引擎 END =====
+
+// 切换车辆时重新初始化数据
+watch(() => currentVehicle.value, (newVal) => {
+	destroyVehicleData()
+	if (newVal) {
+		initVehicleData(newVal.vin)
+	}
+})
+</script>
+
+<style scoped>
+.dashboard-container {
+	flex-direction: row;
+	flex: 1;
+	background-color: #000000;
+}
+
+/* 左侧地图样式 */
+.left-map-panel {
+	flex: 1.2;
+	position: relative;
+	background-color: #111111;
+}
+.map-sandbox {
+	flex: 1;
+}
+.native-map {
+	flex: 1;
+}
+
+/* 导航浮层样式 */
+.nav-guide-overlay {
+	position: absolute;
+	top: 20px;
+	left: 20px;
+	right: 20px;
+	background-color: rgba(28, 28, 30, 0.95);
+	border-radius: 12px;
+	padding: 15px;
+	flex-direction: row;
+	align-items: center;
+	border-width: 1px;
+	border-color: #2C2C2E;
+}
+.nav-icon-box {
+	align-items: center;
+	justify-content: center;
+}
+.nav-distance-text {
+	color: #3875F6;
+	font-size: 14px;
+	font-weight: bold;
+	margin-top: 2px;
+}
+.nav-text-box {
+	margin-left: 15px;
+	flex: 1;
+}
+.nav-instruction-text {
+	color: #FFFFFF;
+	font-size: 17px;
+	font-weight: bold;
+}
+.nav-next-road {
+	color: #8E8E93;
+	font-size: 12px;
+	margin-top: 2px;
+}
+
+/* 右侧面板 */
+.right-info-panel {
+	flex: 0.8;
+	background-color: #0A0A0C;
+	justify-content: space-between;
+}
+
+.vehicle-model-area {
+	flex: 1;
+	position: relative;
+}
+.tesla-scene-component {
+	flex: 1;
+}
+.vehicle-motion-status {
+	position: absolute;
+	bottom: 8px;
+	left: 15px;
+	right: 15px;
+	flex-direction: row;
+	justify-content: space-between;
+}
+.motion-status-text {
+	font-size: 12px;
+	font-weight: bold;
+}
+.live-tag {
+	color: #636366;
+	font-size: 11px;
+}
+.plate-tag {
+	color: #8E8E93;
+	font-size: 11px;
+	margin-left: 6px;
+}
+
+/* 行驶数据面板 */
+.drive-data-board {
+	padding: 16px 20px;
+	background-color: #1C1C1E;
+	margin: 0 15px 10px 15px;
+	border-radius: 14px;
+}
+.main-stats-row {
+	flex-direction: row;
+	justify-content: space-around;
+	align-items: flex-end;
+}
+.stat-block {
+	align-items: center;
+}
+.speed-value {
+	font-size: 48px;
+	color: #FFFFFF;
+	font-weight: bold;
+	font-family: monospace;
+}
+.gear-value {
+	font-size: 38px;
+	color: #3875F6;
+	font-weight: bold;
+}
+.stat-unit {
+	color: #8E8E93;
+	font-size: 11px;
+	margin-top: 2px;
+}
+
+.sub-stats-row {
+	flex-direction: row;
+	justify-content: space-between;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top-width: 1px;
+	border-top-color: #2C2C2E;
+}
+.sub-stat-item {
+	flex-direction: row;
+	align-items: center;
+}
+.battery-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 4px;
+	margin-right: 6px;
+}
+.sub-stat-text {
+	color: #AEAEB2;
+	font-size: 13px;
+}
+
+/* 迷你音乐栏 */
+.mini-music-bar {
+	height: 32px; 
+	background-color: #121212;
+	justify-content: center;
+	padding: 0 15px;
+	position: relative;
+}
+.music-content {
+	flex-direction: row;
+	align-items: center;
+}
+.music-title-text {
+	color: #8E8E93;
+	font-size: 12px;
+	margin-left: 8px;
+	text-overflow: ellipsis;
+	lines: 1;
+}
+.mini-progress-track {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 2px;
+	background-color: #2C2C2E;
+}
+.mini-progress-fill {
+	height: 2px;
+	background-color: #3875F6;
+}
+
+/* 地图底部路名栏与测试控制 */
+.map-bottom-bar {
+	position: absolute;
+	bottom: 15px;
+	left: 15px;
+	right: 15px;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+}
+.road-name-container {
+	background-color: rgba(0,0,0,0.7);
+	padding: 6px 14px;
+	border-radius: 20px;
+	flex-direction: row;
+	align-items: center;
+}
+.road-name-text {
+	color: #FFFFFF;
+	font-size: 12px;
+	margin-left: 6px;
+}
+
+/* 模拟面板触发按钮 */
+.sim-trigger {
+	position: absolute;
+	bottom: 50px;
+	right: 10px;
+	width: 40px;
+	height: 40px;
+	background-color: rgba(56, 117, 246, 0.85);
+	border-radius: 20px;
+	justify-content: center;
+	align-items: center;
+}
+.sim-trigger-text {
+	color: #FFFFFF;
+	font-size: 11px;
+	font-weight: bold;
+}
+
+/* 模拟控制面板 */
+.sim-panel {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(10, 10, 12, 0.97);
+	padding: 10px;
+}
+.sim-panel-header {
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	padding-bottom: 8px;
+	border-bottom-width: 1px;
+	border-bottom-color: #2C2C2E;
+	margin-bottom: 8px;
+}
+.sim-panel-title {
+	color: #3875F6;
+	font-size: 14px;
+	font-weight: bold;
+}
+.sim-panel-close {
+	color: #8E8E93;
+	font-size: 12px;
+	padding: 4px 10px;
+	background-color: #1C1C1E;
+	border-radius: 10px;
+}
+
+/* 模拟区块 */
+.sim-section {
+	margin-bottom: 10px;
+	padding-bottom: 8px;
+	border-bottom-width: 1px;
+	border-bottom-color: rgba(44, 44, 46, 0.5);
+}
+.sim-section-title {
+	color: #AEAEB2;
+	font-size: 11px;
+	margin-bottom: 6px;
+}
+
+/* 通用行 */
+.sim-row {
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+}
+.sim-label {
+	color: #FFFFFF;
+	font-size: 12px;
+	flex: 1;
+}
+.sim-value {
+	color: #3875F6;
+	font-size: 12px;
+	font-weight: bold;
+}
+
+/* 按钮 */
+.sim-btn {
+	color: #FFFFFF;
+	font-size: 11px;
+	background-color: #1C1C1E;
+	padding: 4px 12px;
+	border-radius: 8px;
+	border-width: 1px;
+	border-color: #3875F6;
+}
+.sim-btn-active {
+	background-color: #3875F6;
+	color: #FFFFFF;
+}
+.sim-btn-full {
+	text-align: center;
+	margin-top: 6px;
+	padding: 6px 0;
+}
+.sim-btn-danger {
+	border-color: #FF3B30;
+	color: #FF3B30;
+}
+
+/* 档位按钮 */
+.sim-gear-row {
+	flex-direction: row;
+	justify-content: space-around;
+}
+.sim-gear-btn {
+	color: #8E8E93;
+	font-size: 14px;
+	font-weight: bold;
+	background-color: #1C1C1E;
+	padding: 6px 16px;
+	border-radius: 8px;
+	border-width: 1px;
+	border-color: #2C2C2E;
+}
+.sim-gear-active {
+	background-color: #3875F6;
+	color: #FFFFFF;
+	border-color: #3875F6;
+}
+
+/* 速度滑块 */
+.sim-slider-row {
+	flex-direction: row;
+	align-items: center;
+	margin-top: 4px;
+}
+.sim-slider-label {
+	color: #636366;
+	font-size: 10px;
+	width: 24px;
+	text-align: center;
+}
+.sim-slider-track {
+	flex: 1;
+	height: 4px;
+	background-color: #2C2C2E;
+	border-radius: 2px;
+	margin: 0 6px;
+	position: relative;
+}
+.sim-slider-fill {
+	height: 4px;
+	background-color: #3875F6;
+	border-radius: 2px;
+}
+.sim-speed-presets {
+	flex-direction: row;
+	justify-content: space-around;
+	margin-top: 6px;
+}
+.sim-preset-btn {
+	color: #8E8E93;
+	font-size: 11px;
+	background-color: #1C1C1E;
+	padding: 3px 10px;
+	border-radius: 6px;
+	border-width: 1px;
+	border-color: #2C2C2E;
+}
+
+/* 目的地列表 */
+.sim-dest-list {
+	flex-direction: row;
+	flex-wrap: wrap;
+}
+.sim-dest-btn {
+	color: #8E8E93;
+	font-size: 10px;
+	background-color: #1C1C1E;
+	padding: 4px 8px;
+	border-radius: 6px;
+	border-width: 1px;
+	border-color: #2C2C2E;
+	margin: 2px 3px;
+}
+.sim-dest-active {
+	background-color: #3875F6;
+	color: #FFFFFF;
+	border-color: #3875F6;
+}
+
+/* 自定义目的地输入 */
+.sim-custom-dest {
+	margin-top: 6px;
+	padding: 8px;
+	background-color: #1C1C1E;
+	border-radius: 8px;
+}
+.sim-input-row {
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 4px;
+}
+.sim-input-label {
+	color: #8E8E93;
+	font-size: 11px;
+	width: 36px;
+}
+.sim-input {
+	flex: 1;
+	height: 28px;
+	background-color: #2C2C2E;
+	border-radius: 6px;
+	padding: 0 8px;
+	color: #FFFFFF;
+	font-size: 12px;
+	margin-left: 6px;
+}
+
+/* 场景按钮 */
+.sim-scene-row {
+	flex-direction: row;
+	justify-content: space-around;
+}
+.sim-scene-btn {
+	color: #AEAEB2;
+	font-size: 11px;
+	background-color: #1C1C1E;
+	padding: 5px 10px;
+	border-radius: 8px;
+	border-width: 1px;
+	border-color: #2C2C2E;
+}
+
+/* 车门/窗切换 */
+.sim-toggle-row {
+	flex-direction: row;
+	justify-content: space-around;
+}
+.sim-toggle-btn {
+	color: #636366;
+	font-size: 10px;
+	background-color: #1C1C1E;
+	padding: 4px 10px;
+	border-radius: 6px;
+	border-width: 1px;
+	border-color: #2C2C2E;
+}
+.sim-toggle-on {
+	background-color: #FF9500;
+	color: #000000;
+	border-color: #FF9500;
+}
+</style>

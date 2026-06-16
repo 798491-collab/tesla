@@ -7,7 +7,9 @@
     "dev:h5": "uni",
     "build:h5": "uni build",
     "dev:mp-weixin": "uni -p mp-weixin",
-    "build:mp-weixin": "uni build -p mp-weixin"
+    "build:mp-weixin": "uni build -p mp-weixin",
+    "build:base": "node build-base.js",
+    "build:plugin": "node build-plugin-base.js"
   },
   "keywords": [
     "tesla",

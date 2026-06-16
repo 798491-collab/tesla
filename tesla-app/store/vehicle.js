@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getUserVehicles, getVehicleState } from '@/api/vehicle.js'
+import { getUserVehicles } from '@/api/vehicle.js'
 
 export const useVehicleStore = defineStore('vehicle', () => {
   const vehicles = ref([])
@@ -10,6 +10,23 @@ export const useVehicleStore = defineStore('vehicle', () => {
 
   const vehicleList = computed(() => vehicles.value)
   const hasVehicles = computed(() => vehicles.value.length > 0)
+
+  // 车牌号：reactive map + localStorage 持久化
+  const licensePlateMap = ref({})
+
+  const getLicensePlate = (vin) => {
+    if (!vin) return ''
+    if (licensePlateMap.value[vin] !== undefined) return licensePlateMap.value[vin]
+    // 首次访问从 localStorage 读取
+    const stored = uni.getStorageSync(`license_plate_${vin}`) || ''
+    licensePlateMap.value[vin] = stored
+    return stored
+  }
+  const setLicensePlate = (vin, plate) => {
+    if (!vin) return
+    uni.setStorageSync(`license_plate_${vin}`, plate)
+    licensePlateMap.value = { ...licensePlateMap.value, [vin]: plate }
+  }
 
   const fetchVehicles = async () => {
     loading.value = true
@@ -42,17 +59,6 @@ export const useVehicleStore = defineStore('vehicle', () => {
     }
   }
 
-  const fetchVehicleState = async (vin) => {
-    if (!vin) return
-    try {
-      const res = await getVehicleState(vin)
-      vehicleState.value = res.data
-      return res.data
-    } catch (err) {
-      console.error('获取车辆状态失败:', err)
-    }
-  }
-
   const clearVehicles = () => {
     vehicles.value = []
     currentVehicle.value = null
@@ -67,10 +73,11 @@ export const useVehicleStore = defineStore('vehicle', () => {
     loading,
     vehicleList,
     hasVehicles,
+    getLicensePlate,
+    setLicensePlate,
     fetchVehicles,
     selectVehicle,
     setCurrentVehicle: selectVehicle,
-    fetchVehicleState,
     clearVehicles
   }
 })

@@ -96,6 +96,7 @@ type VehicleState struct {
 	TPMSPressureFR float64 `json:"tpms_pressure_fr"`
 	TPMSPressureRL float64 `json:"tpms_pressure_rl"`
 	TPMSPressureRR float64 `json:"tpms_pressure_rr"`
+	SpeedLimitMode SpeedLimitMode `json:"speed_limit_mode"`
 }
 
 // ChargeState 充电状态
@@ -138,6 +139,20 @@ type DriveState struct {
 	ActiveRouteMinutesToArrival float64 `json:"active_route_minutes_to_arrival"`
 	LightsHighBeams      bool    `json:"lights_high_beams"`
 	LightsTurnSignal     string  `json:"lights_turn_signal"`
+	CruiseState          string  `json:"cruise_state"`
+	AutosteerState       string  `json:"autosteer_state"`
+	CruiseControlState   string  `json:"cruise_control_state"`
+	LaneKeepingState     string  `json:"lane_keeping_state"`
+	ActiveRouteSpeedLimit float64 `json:"active_route_speed_limit"`
+}
+
+// SpeedLimitMode 限速模式
+type SpeedLimitMode struct {
+	Active         bool    `json:"active"`
+	CurrentLimitMph float64 `json:"current_limit_mph"`
+	MaxLimitMph    float64 `json:"max_limit_mph"`
+	MinLimitMph    float64 `json:"min_limit_mph"`
+	PinCodeSet     bool    `json:"pin_code_set"`
 }
 
 // FlexInt 可以同时解析 JSON 中的整数和字符串值
@@ -348,6 +363,7 @@ type VehicleStateData struct {
 	DestinationLongitude float64 `json:"destination_longitude"`
 	DestinationName      string  `json:"destination_name"`
 	BatteryTemp        float64 `json:"battery_temp"`
+	CurrentLimitMph    float64 `json:"current_limit_mph"`
 	UpdatedAt          int64   `json:"updated_at"`
 }
 
@@ -366,119 +382,260 @@ type MediaStateData struct {
 	UpdatedAt            int64  `json:"updated_at"`
 }
 
-func ExtractRealtimeFromSimple(data *SimpleVehicleData) *RealtimeData {
-	return &RealtimeData{
-		Speed:              data.Speed,
-		Gear:               data.Gear,
-		Power:              data.Power,
-		PedalPosition:      data.PedalPosition,
-		Heading:            data.Heading,
-		Latitude:           data.Latitude,
-		Longitude:          data.Longitude,
-		Soc:                float64(data.Soc),
-		BatteryLevel:       float64(data.Soc),
-		DCChargingPower:    data.ChargePower,
-		ACChargingPower:    0,
-		PackVoltage:        float64(data.Voltage),
-		PackCurrent:        data.Ampere,
-		EnergyRemaining:    0,
-		ChargeAmps:         data.Ampere,
-		ChargerVoltage:     float64(data.Voltage),
-		ChargeState:        data.ChargingState,
-		FastChargerPresent: data.Supercharging,
-		UpdatedAt:          time.Now().UnixMilli(),
+func ExtractRealtimeFromSimple(data *SimpleVehicleData) map[string]interface{} {
+	m := map[string]interface{}{}
+	if data.Speed != 0 {
+		m["speed"] = data.Speed
 	}
+	if data.Gear != "" {
+		m["gear"] = data.Gear
+	}
+	if data.Power != 0 {
+		m["power"] = data.Power
+	}
+	if data.PedalPosition != 0 {
+		m["pedal_position"] = data.PedalPosition
+	}
+	if data.Latitude != 0 || data.Longitude != 0 {
+		m["latitude"] = data.Latitude
+		m["longitude"] = data.Longitude
+	}
+	if data.Heading != 0 {
+		m["heading"] = data.Heading
+	}
+	if data.Soc != 0 {
+		m["soc"] = float64(data.Soc)
+		m["battery_level"] = float64(data.Soc)
+	}
+	if data.ChargePower != 0 {
+		m["dc_charging_power"] = data.ChargePower
+	}
+	if data.Voltage != 0 {
+		m["charger_voltage"] = float64(data.Voltage)
+		m["pack_voltage"] = float64(data.Voltage)
+	}
+	if data.Ampere != 0 {
+		m["charge_amps"] = data.Ampere
+		m["pack_current"] = data.Ampere
+	}
+	if data.ChargingState != "" {
+		m["charge_state"] = data.ChargingState
+	}
+	if data.Supercharging {
+		m["fast_charger_present"] = data.Supercharging
+	}
+	m["updated_at"] = time.Now().UnixMilli()
+	return m
 }
 
-func ExtractStateFromSimple(data *SimpleVehicleData) *VehicleStateData {
-	return &VehicleStateData{
-		Locked:             data.Locked,
-		DoorOpen:           data.DoorOpen,
-		DoorFL:             data.DoorFL,
-		DoorFR:             data.DoorFR,
-		DoorRL:             data.DoorRL,
-		DoorRR:             data.DoorRR,
-		TrunkOpen:          data.TrunkOpen,
-		FrunkOpen:          data.FrunkOpen,
-		WindowsOpen:        data.WindowsOpen,
-		FdWindow:           data.FdWindow,
-		FpWindow:           data.FpWindow,
-		RdWindow:           data.RdWindow,
-		RpWindow:           data.RpWindow,
-		SentryMode:         data.SentryMode,
-		ServiceMode:        data.ServiceMode,
-		InsideTemp:         data.InsideTemp,
-		OutsideTemp:        data.OutsideTemp,
-		DriverTempSetting:  data.DriverTempSetting,
-		PassengerTempSetting: data.PassengerTempSetting,
-		IsACOn:             data.IsACOn,
-		IsClimateOn:        data.IsClimateOn,
-		SeatHeaterLeft:     data.SeatHeaterLeft,
-		SeatHeaterRight:    data.SeatHeaterRight,
-		SeatHeaterRearLeft: data.SeatHeaterRearLeft,
-		SeatHeaterRearRight: data.SeatHeaterRearRight,
-		SeatHeaterRearCenter: data.SeatHeaterRearCenter,
-		SteeringWheelHeater: data.SteeringWheelHeater,
-		DefrostMode:        data.DefrostMode,
-		HvacPower:          data.HvacPower,
-		HvacACEnabled:      data.HvacACEnabled,
-		HvacAutoMode:       data.HvacAutoMode,
-		HvacFanSpeed:       data.HvacFanSpeed,
-		ClimateKeeperMode:  data.ClimateKeeperMode,
-		ChargePortDoorOpen: data.ChargePortDoorOpen,
-		ChargePortLatch:    data.ChargePortLatch,
-		ChargeLimitSoc:     data.ChargeLimitSoc,
-		MinutesToFull:      data.MinutesToFull,
-		ChargingState:      data.ChargingState,
-		ChargeSpeed:        data.ChargeSpeed,
-		Voltage:            data.Voltage,
-		Ampere:             data.Ampere,
-		ChargePower:        data.ChargePower,
-		AddedEnergy:        data.AddedEnergy,
-		ChargeEnergyAdded:  data.ChargeEnergyAdded,
-		FastChargerType:    data.FastChargerType,
-		BatteryHeaterOn:    data.BatteryHeaterOn,
-		TpmsFL:             data.TpmsFL,
-		TpmsFR:             data.TpmsFR,
-		TpmsRL:             data.TpmsRL,
-		TpmsRR:             data.TpmsRR,
-		CarType:            data.CarType,
-		ExteriorColor:      data.ExteriorColor,
-		Version:            data.Version,
-		OdometerKm:         data.OdometerKm,
-		RangeKm:            data.RangeKm,
-		CenterDisplayState: data.CenterDisplayState,
-		MirrorFolded:       data.MirrorFolded,
-		LightsHighBeams:    data.LightsHighBeams,
-		LightsHazardsActive: data.LightsHazardsActive,
-		LightsTurnSignal:   data.LightsTurnSignal,
-		BrakePedal:         data.BrakePedal,
-		DriveRail:          data.DriveRail,
-		PedalPosition:      data.PedalPosition,
-		GuestModeEnabled:   data.GuestModeEnabled,
-		DestinationLatitude:  data.DestinationLatitude,
-		DestinationLongitude: data.DestinationLongitude,
-		DestinationName:      data.DestinationName,
-		BatteryTemp:        data.BatteryTemp,
-		UpdatedAt:          time.Now().UnixMilli(),
+func ExtractStateFromSimple(data *SimpleVehicleData) map[string]interface{} {
+	m := map[string]interface{}{}
+	// Fleet API 规则：
+	// - 布尔字段：false 是合法值（如 locked=false, sentry_mode=false），必须推送
+	// - 数值字段 0：需要区分语义
+	//   - speed=0: Fleet API 返回 null 时 Go 解析为 0，null≠0，不推送
+	//   - seat_heater=0: 合法值（0=关闭），必须推送
+	//   - charger_voltage=0: 合法值（未充电），但不应覆盖遥测充电数据，不推送
+	//   - defrost_mode=0: 合法值（0=关闭），必须推送
+	// - 字符串字段 "": Fleet API 返回 null 时 Go 解析为 ""，null≠""，不推送
+
+	// 布尔字段：直接推送，false 也是合法值
+	m["locked"] = data.Locked
+	m["door_open"] = data.DoorOpen
+	m["door_fl"] = data.DoorFL
+	m["door_fr"] = data.DoorFR
+	m["door_rl"] = data.DoorRL
+	m["door_rr"] = data.DoorRR
+	m["trunk_open"] = data.TrunkOpen
+	m["frunk_open"] = data.FrunkOpen
+	m["windows_open"] = data.WindowsOpen
+	m["fd_window"] = data.FdWindow
+	m["fp_window"] = data.FpWindow
+	m["rd_window"] = data.RdWindow
+	m["rp_window"] = data.RpWindow
+	m["sentry_mode"] = data.SentryMode
+	m["service_mode"] = data.ServiceMode
+	m["is_ac_on"] = data.IsACOn
+	m["is_climate_on"] = data.IsClimateOn
+	m["brake_pedal"] = data.BrakePedal
+	m["drive_rail"] = data.DriveRail
+	m["guest_mode_enabled"] = data.GuestModeEnabled
+	m["charge_port_door_open"] = data.ChargePortDoorOpen
+	m["battery_heater_on"] = data.BatteryHeaterOn
+	m["hvac_ac_enabled"] = data.HvacACEnabled
+	m["steering_wheel_heater"] = data.SteeringWheelHeater
+
+	// 数值字段：0 是合法值（0=关闭/无），必须推送
+	// 这些字段的 0 有明确语义：座椅加热0=关闭，除霜0=关闭，风扇0=关闭
+	m["seat_heater_left"] = data.SeatHeaterLeft
+	m["seat_heater_right"] = data.SeatHeaterRight
+	m["seat_heater_rear_left"] = data.SeatHeaterRearLeft
+	m["seat_heater_rear_right"] = data.SeatHeaterRearRight
+	m["seat_heater_rear_center"] = data.SeatHeaterRearCenter
+	m["defrost_mode"] = data.DefrostMode
+	m["hvac_fan_speed"] = data.HvacFanSpeed
+	m["charge_limit_soc"] = data.ChargeLimitSoc
+
+	// 数值字段：0 可能是"无数据"也可能是"真实0"，需要根据上下文判断
+	// 温度字段：0 可能是真实0度（极端天气），但更可能是传感器未初始化
+	// Fleet API 在车辆休眠唤醒后可能返回 0.0 作为占位
+	if data.InsideTemp != 0 {
+		m["inside_temp"] = data.InsideTemp
 	}
+	if data.OutsideTemp != 0 {
+		m["outside_temp"] = data.OutsideTemp
+	}
+	if data.DriverTempSetting != 0 {
+		m["driver_temp_setting"] = data.DriverTempSetting
+	}
+	if data.PassengerTempSetting != 0 {
+		m["passenger_temp_setting"] = data.PassengerTempSetting
+	}
+	if data.HvacPower != 0 {
+		m["hvac_power"] = data.HvacPower
+	}
+	if data.HvacAutoMode {
+		m["hvac_auto_mode"] = data.HvacAutoMode
+	}
+	if data.ClimateKeeperMode != 0 {
+		m["climate_keeper_mode"] = data.ClimateKeeperMode
+	}
+
+	// 充电相关字段：0 是合法值（未充电时为0），但不应覆盖遥测的充电数据
+	// Fleet API 返回完整的充电状态快照，0 值是真实的
+	if data.ChargePortLatch != "" {
+		m["charge_port_latch"] = data.ChargePortLatch
+	}
+	if data.ChargingState != "" {
+		m["charging_state"] = data.ChargingState
+	}
+	if data.ChargeSpeed != 0 {
+		m["charge_speed"] = data.ChargeSpeed
+	}
+	if data.Voltage != 0 {
+		m["voltage"] = data.Voltage
+	}
+	if data.Ampere != 0 {
+		m["ampere"] = data.Ampere
+	}
+	if data.ChargePower != 0 {
+		m["charge_power"] = data.ChargePower
+	}
+	if data.AddedEnergy != 0 {
+		m["added_energy"] = data.AddedEnergy
+	}
+	if data.ChargeEnergyAdded != 0 {
+		m["charge_energy_added"] = data.ChargeEnergyAdded
+	}
+	if data.FastChargerType != "" {
+		m["fast_charger_type"] = data.FastChargerType
+	}
+	if data.MinutesToFull != 0 {
+		m["minutes_to_full"] = data.MinutesToFull
+	}
+
+	// 胎压：0 可能是传感器未初始化
+	if data.TpmsFL != 0 {
+		m["tpms_fl"] = data.TpmsFL
+	}
+	if data.TpmsFR != 0 {
+		m["tpms_fr"] = data.TpmsFR
+	}
+	if data.TpmsRL != 0 {
+		m["tpms_rl"] = data.TpmsRL
+	}
+	if data.TpmsRR != 0 {
+		m["tpms_rr"] = data.TpmsRR
+	}
+
+	// 里程/版本等：0 通常不是合法值
+	if data.CarType != "" {
+		m["car_type"] = data.CarType
+	}
+	if data.ExteriorColor != "" {
+		m["exterior_color"] = data.ExteriorColor
+	}
+	if data.Version != "" {
+		m["version"] = data.Version
+	}
+	if data.OdometerKm != 0 {
+		m["odometer_km"] = data.OdometerKm
+	}
+	if data.RangeKm != 0 {
+		m["range_km"] = data.RangeKm
+	}
+	if data.CenterDisplayState != 0 {
+		m["center_display_state"] = data.CenterDisplayState
+	}
+	if data.MirrorFolded {
+		m["mirror_folded"] = data.MirrorFolded
+	}
+	if data.LightsHighBeams {
+		m["lights_high_beams"] = data.LightsHighBeams
+	}
+	if data.LightsHazardsActive {
+		m["lights_hazards_active"] = data.LightsHazardsActive
+	}
+	if data.LightsTurnSignal != "" {
+		m["lights_turn_signal"] = data.LightsTurnSignal
+	}
+	if data.PedalPosition != 0 {
+		m["pedal_position"] = data.PedalPosition
+	}
+	if data.DestinationLatitude != 0 || data.DestinationLongitude != 0 {
+		m["destination_latitude"] = data.DestinationLatitude
+		m["destination_longitude"] = data.DestinationLongitude
+	}
+	if data.DestinationName != "" {
+		m["destination_name"] = data.DestinationName
+	}
+	if data.BatteryTemp != 0 {
+		m["battery_temp"] = data.BatteryTemp
+	}
+	if data.CurrentLimitMph != 0 {
+		m["current_limit_mph"] = data.CurrentLimitMph
+	}
+	m["updated_at"] = time.Now().UnixMilli()
+	return m
 }
 
-func ExtractMediaFromSimple(data *SimpleVehicleData) *MediaStateData {
-	return &MediaStateData{
-		PlaybackStatus:       data.MediaPlaybackStatus,
-		AudioSource:          data.MediaAudioSource,
-		Volume:               data.MediaVolume,
-		AudioVolumeIncrement: data.MediaAudioVolumeIncrement,
-		AudioVolumeMax:       data.MediaAudioVolumeMax,
-		NowPlayingTitle:      data.NowPlayingTitle,
-		NowPlayingArtist:     data.NowPlayingArtist,
-		NowPlayingAlbum:      data.NowPlayingAlbum,
-		NowPlayingDuration:   data.NowPlayingDuration,
-		NowPlayingElapsed:    data.NowPlayingElapsed,
-		NowPlayingStation:    data.NowPlayingStation,
-		UpdatedAt:            time.Now().UnixMilli(),
+func ExtractMediaFromSimple(data *SimpleVehicleData) map[string]interface{} {
+	m := map[string]interface{}{}
+	if data.MediaPlaybackStatus != "" {
+		m["media_playback_status"] = data.MediaPlaybackStatus
 	}
+	if data.MediaAudioSource != "" {
+		m["media_audio_source"] = data.MediaAudioSource
+	}
+	if data.MediaVolume != 0 {
+		m["media_volume"] = data.MediaVolume
+	}
+	if data.MediaAudioVolumeIncrement != 0 {
+		m["media_audio_volume_increment"] = data.MediaAudioVolumeIncrement
+	}
+	if data.MediaAudioVolumeMax != 0 {
+		m["media_audio_volume_max"] = data.MediaAudioVolumeMax
+	}
+	if data.NowPlayingTitle != "" {
+		m["now_playing_title"] = data.NowPlayingTitle
+	}
+	if data.NowPlayingArtist != "" {
+		m["now_playing_artist"] = data.NowPlayingArtist
+	}
+	if data.NowPlayingAlbum != "" {
+		m["now_playing_album"] = data.NowPlayingAlbum
+	}
+	if data.NowPlayingDuration != 0 {
+		m["now_playing_duration"] = data.NowPlayingDuration
+	}
+	if data.NowPlayingElapsed != 0 {
+		m["now_playing_elapsed"] = data.NowPlayingElapsed
+	}
+	if data.NowPlayingStation != "" {
+		m["now_playing_station"] = data.NowPlayingStation
+	}
+	m["updated_at"] = time.Now().UnixMilli()
+	return m
 }
 
 // SimpleVehicleData 简化车辆数据结构，用于前端展示
@@ -585,6 +742,11 @@ type SimpleVehicleData struct {
 	DestinationName          string  `json:"destination_name"`
 	MilesToArrival           float64 `json:"miles_to_arrival"`
 	MinutesToArrival         float64 `json:"minutes_to_arrival"`
+	CurrentLimitMph          float64 `json:"current_limit_mph"`
+	CruiseState              string  `json:"cruise_state"`
+	AutosteerState           string  `json:"autosteer_state"`
+	CruiseControlState       string  `json:"cruise_control_state"`
+	LaneKeepingState         string  `json:"lane_keeping_state"`
 }
 
 // VirtualKeyStatus 虚拟钥匙状态
@@ -1005,6 +1167,11 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		DestinationName:          data.Response.DriveState.ActiveRouteName,
 		MilesToArrival:           data.Response.DriveState.ActiveRouteMilesToArrival,
 		MinutesToArrival:         data.Response.DriveState.ActiveRouteMinutesToArrival,
+		CurrentLimitMph:          data.Response.VehicleState.SpeedLimitMode.CurrentLimitMph,
+		CruiseState:              data.Response.DriveState.CruiseState,
+		AutosteerState:           data.Response.DriveState.AutosteerState,
+		CruiseControlState:       data.Response.DriveState.CruiseControlState,
+		LaneKeepingState:         data.Response.DriveState.LaneKeepingState,
 		MediaPlaybackStatus:     data.Response.MediaInfo.MediaPlaybackStatus,
 		MediaAudioSource:        data.Response.MediaInfo.NowPlayingSource,
 		MediaVolume:             data.Response.MediaInfo.AudioVolume,
@@ -1234,6 +1401,33 @@ func CheckFleetStatus(accessToken string, vins []string) (*FleetStatusResponse, 
 			return nil, err
 		}
 		return &data, nil
+	}
+
+	return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode(), string(resp.Body()))
+}
+
+// GetFleetTelemetryErrors 查询车辆遥测连接错误（Tesla 官方推荐的排查手段）
+func GetFleetTelemetryErrors(accessToken string, vin string) (interface{}, error) {
+	cfg := config.Load()
+	url := fmt.Sprintf("%s/api/1/vehicles/%s/fleet_telemetry_errors", cfg.Tesla.FleetAPIURL, vin)
+
+	resp, err := client.R().
+		SetHeader("Authorization", "Bearer "+accessToken).
+		Get(url)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode() == 200 {
+		var result map[string]interface{}
+		if err := json.Unmarshal(resp.Body(), &result); err != nil {
+			return nil, err
+		}
+		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
+			return nil, fmt.Errorf("Tesla API error: %s", errMsg)
+		}
+		return result, nil
 	}
 
 	return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode(), string(resp.Body()))

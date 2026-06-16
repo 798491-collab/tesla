@@ -73,3 +73,9 @@ tesla-app/build/
 node_modules
 unpackage
 .hbuilderx
+com
+tesla-app/TencentNaviDemo_Android_v7.7.0 (2)/
+*.java
+tesla-app/build-plugin-base.js
+tesla-app/AndroidManifest.xml
+tesla-app/.build_cache/

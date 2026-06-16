@@ -159,7 +159,7 @@ const isCharging = computed(() => vehicleData.value?.charging === true)
 const chargePower = computed(() => vehicleData.value?.charge_power || 0)
 const chargeVoltage = computed(() => vehicleData.value?.voltage || 0)
 const chargeAmpere = computed(() => vehicleData.value?.ampere || 0)
-const chargePowerDisplay = computed(() => Math.round(chargePower.value))
+const chargePowerDisplay = computed(() => Math.round(chargePower.value * 10) / 10)
 const chargeTypeLabel = computed(() => getChargeType(vehicleData.value).label)
 
 const drivePower = computed(() => vehicleData.value?.power || 0)
@@ -271,6 +271,7 @@ onMounted(() => {
   // 全屏模式
   try {
     plus.navigator.setFullscreen(true)
+    plus.navigator.hideSystemNavigation()
   } catch (e) {}
   // #endif
 
@@ -286,13 +287,16 @@ onUnmounted(() => {
   try { uni.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {}
 
   // #ifdef APP-PLUS
-  // 恢复屏幕方向
+  // 恢复竖屏
   try {
-    plus.screen.unlockOrientation()
+    plus.screen.lockOrientation('portrait-primary')
   } catch (e) {}
   // 退出全屏
   try {
     plus.navigator.setFullscreen(false)
+  } catch (e) {}
+  try {
+    plus.navigator.showSystemNavigation()
   } catch (e) {}
   // #endif
 
@@ -307,6 +311,12 @@ onShow(() => {
 })
 
 onHide(() => {
+  // #ifdef APP-PLUS
+  // 恢复竖屏 + 退出全屏
+  try { plus.screen.lockOrientation('portrait-primary') } catch (e) {}
+  try { plus.navigator.setFullscreen(false) } catch (e) {}
+  try { plus.navigator.showSystemNavigation() } catch (e) {}
+  // #endif
   destroyVehicleData()
 })
 

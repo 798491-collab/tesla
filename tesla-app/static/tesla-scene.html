@@ -1,87 +1,21 @@
-<template>
-  <!-- #ifdef APP-PLUS || H5 -->
-  <view
-    :id="containerId"
-    style="width:100%;height:100%"
-    @click="tesla.onCanvasClick"
-    :stateData="state"
-    :change:stateData="tesla.onStateChange"
-    :darkModeVal="darkModeProp"
-    :change:darkModeVal="tesla.onDarkModeChange"
-    :licensePlateVal="licensePlate"
-    :change:licensePlateVal="tesla.onLicensePlateChange"
-    :containerIdProp="containerId"
-    :change:containerIdProp="tesla.onContainerIdChange"
-  ></view>
-  <!-- #endif -->
-  <!-- #ifndef APP-PLUS || H5 -->
-  <view style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
-    <text style="color:#999;font-size:24rpx;">3D模型仅支持APP和H5</text>
-  </view>
-  <!-- #endif -->
-</template>
-
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tesla 3D Scene</title>
+<style>
+* { margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+#container { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="container"></div>
 <script>
-export default {
-  props: {
-    darkMode: { type: Boolean, default: true },
-    licensePlateFront: { type: String, default: '' },
-    licensePlateRear: { type: String, default: '' },
-    // renderjs 通信 props
-    state: { type: Object, default: null },
-    darkModeProp: { type: Boolean, default: true },
-    licensePlate: { type: Object, default: null },
-    containerIdProp: { type: String, default: '' },
-  },
-  data() {
-    return {
-      containerId: this.containerIdProp || 'tesla-scene-' + Math.random().toString(36).slice(2, 8),
-      loading: true,
-      chargeProgress: 68,
-    }
-  },
-  methods: {
-    // renderjs 通过 ownerVm.callMethod 回调逻辑层
-    onDoorClick(doorKey) {
-      this.$emit('onDoorClick', doorKey)
-    },
-    onTrunkClick() {
-      this.$emit('onTrunkClick')
-    },
-    onSceneReady() {
-      this.loading = false
-      this.$emit('onSceneReady')
-    },
-    // 暴露给父组件的方法（兼容 ref 调用方式）
-    setDoor(key, value) { /* state 由父组件管理 */ },
-    toggleDoor(key) { /* state 由父组件管理 */ },
-    toggleTrunk() { /* state 由父组件管理 */ },
-    allDoorsOpen() { /* state 由父组件管理 */ },
-    allDoorsClose() { /* state 由父组件管理 */ },
-    setLight(key, value) { /* state 由父组件管理 */ },
-    toggleLight(key) { /* state 由父组件管理 */ },
-    setGear(g) { /* state 由父组件管理 */ },
-    setSpeed(v) { /* state 由父组件管理 */ },
-    setMirrorFolded(v) { /* state 由父组件管理 */ },
-    setCharging(v) { /* state 由父组件管理 */ },
-    setColor(key, color) { /* state 由父组件管理 */ },
-    setFogLight(on) { /* state 由父组件管理 */ },
-    setDarkMode(dark) { /* 由 prop 驱动 */ },
-    setLicensePlate(front, rear) { /* 由 prop 驱动 */ },
-    getLoading() { return this.loading },
-    getChargeProgress() { return this.chargeProgress },
-    getState() { return this.state },
-  }
-}
-</script>
-
-<script module="tesla" lang="renderjs">
 // Three.js 通过 IIFE bundle 加载，所有模块挂载在全局 THREE_BUNDLE 对象上
-// 在 mounted 中动态加载 static/three-bundle.js，加载完成后从 window.THREE_BUNDLE 获取模块
 
 let THREE, OrbitControls, GLTFLoader, DRACOLoader, EffectComposer, RenderPass, EffectPass, BloomEffect
-
-let _containerId = null
 
 let isAndroid = false
 let isLowEnd = false
@@ -163,7 +97,6 @@ let displaySize = null
 let routeLineFL, routeLineFR, routeLineRL, routeLineRR
 let frontPlateNode = null
 let rearPlateNode = null
-let pendingLicensePlate = null
 let rootNode = null
 let rootInitialPos = null
 let ambientLight, dirLight1, dirLight2, dirLight3
@@ -175,7 +108,6 @@ let mouse = null
 
 // 从逻辑层获取的 state 引用
 let ownerState = null
-let ownerVm = null
 
 function setEmissive(materials, color, intensity) {
   for (const m of materials) {
@@ -267,20 +199,7 @@ function createRouteLine(spacing, isForward) {
 
 function initScene(container) {
   console.log('[TeslaScene] initScene called')
-
-  // 确保容器有有效尺寸，避免 WebGL framebuffer incomplete
-  let cw = container.clientWidth
-  let ch = container.clientHeight
-  if (!cw || !ch) {
-    const winW = window.innerWidth || document.documentElement.clientWidth || 375
-    const winH = window.innerHeight || document.documentElement.clientHeight || 400
-    cw = cw || winW
-    ch = ch || winH
-    container.style.width = cw + 'px'
-    container.style.height = ch + 'px'
-    console.log('[TeslaScene] container had no dimensions, forced to:', cw, 'x', ch)
-  }
-  console.log('[TeslaScene] container in initScene:', cw, 'x', ch)
+  console.log('[TeslaScene] container in initScene:', container.clientWidth, 'x', container.clientHeight)
 
   // APP-PLUS: file:// 协议下 fetch 不可用，用 XHR 替代 fetch
   const isAppPlus = typeof plus !== 'undefined' ||
@@ -342,14 +261,13 @@ function initScene(container) {
   mouse = new THREE.Vector2()
 
   scene = new THREE.Scene()
-  camera = new THREE.PerspectiveCamera(45, cw / ch, 0.1, 100)
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100)
   // 入场动画最终相机位置
   camera.position.set(-0.83, 4.2, 3.33)
 
   // WebGL 渲染器创建，添加错误处理
   let glContext = null
   try {
-    // 如果 container 是有效的 DOM 元素，直接使用；否则尝试通过 id 查找
     if (container && typeof container.appendChild === 'function') {
       glContext = container
     } else if (container && container.id) {
@@ -401,7 +319,7 @@ function initScene(container) {
   }
   console.log('[TeslaScene] WebGL context obtained:', gl instanceof WebGLRenderingContext || gl instanceof WebGL2RenderingContext)
 
-  renderer.setSize(cw, ch)
+  renderer.setSize(container.clientWidth, container.clientHeight)
   const maxPixelRatio = qualityLevel === 'low' ? 1 : (qualityLevel === 'medium' ? 1.5 : 2)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio))
   renderer.shadowMap.enabled = qualityLevel !== 'low'
@@ -419,9 +337,7 @@ function initScene(container) {
   renderer.domElement.addEventListener('webglcontextrestored', function () {
     console.log('[TeslaScene] WebGL context restored, reinitializing')
     if (scene && camera) {
-      const rw = container.clientWidth || window.innerWidth || 375
-      const rh = container.clientHeight || window.innerHeight || 400
-      composer.setSize(rw, rh)
+      composer.setSize(container.clientWidth, container.clientHeight)
       lastFrameTime = 0
       animate()
     }
@@ -553,24 +469,8 @@ function initScene(container) {
     scene.add(m)
     m.updateMatrixWorld(true)
     initModelRefs(m)
-    if (ownerVm) {
-      ownerVm.callMethod('onSceneReady')
-    } else {
-      // fallback: 延迟重试，等待 onStateChange 传入 ownerVm
-      console.warn('[TeslaScene] ownerVm is null on model loaded, retrying...')
-      let retryCount = 0
-      const retryInterval = setInterval(() => {
-        retryCount++
-        if (ownerVm) {
-          ownerVm.callMethod('onSceneReady')
-          clearInterval(retryInterval)
-          console.log('[TeslaScene] ownerVm retry success')
-        } else if (retryCount > 30) {
-          console.error('[TeslaScene] ownerVm still null after 30 retries, model ready callback failed')
-          clearInterval(retryInterval)
-        }
-      }, 200)
-    }
+    // 通知 nvue 页面场景就绪（通过 title 变化，nvue web-view 不支持 @message）
+    document.title = 'TESLA_READY'
   }
 
   function createGLTFLoaderWithDraco() {
@@ -578,8 +478,8 @@ function initScene(container) {
     if (DRACOLoader) {
       const dracoLoader = new DRACOLoader()
       const dracoPaths = isAppPlusModel
-        ? [window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1) + 'static/draco/gltf/', './static/draco/gltf/', '/static/draco/gltf/']
-        : ['./static/draco/gltf/', '/static/draco/gltf/']
+        ? [window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1) + 'draco/gltf/', './draco/gltf/', '/draco/gltf/']
+        : ['./draco/gltf/', '/draco/gltf/']
       dracoLoader.setDecoderPath(dracoPaths[0])
       dracoLoader.setDecoderConfig({ type: 'js' })
       loader.setDRACOLoader(dracoLoader)
@@ -588,10 +488,10 @@ function initScene(container) {
     return loader
   }
 
-  var dracoModelPaths = ['./static/model/scene-draco.glb', '/static/model/scene-draco.glb']
-  var fallbackModelPaths = ['./static/model/scene.gltf', '/static/model/scene.gltf']
+  var dracoModelPaths = ['./model/scene-draco.glb', '/model/scene-draco.glb']
+  var fallbackModelPaths = ['./model/scene.gltf', '/model/scene.gltf']
   var modelLoadIdx = 0
-  var useDracoModel = true
+  var useDracoModel = false
 
   function tryLoadModel() {
     var paths = useDracoModel ? dracoModelPaths : fallbackModelPaths
@@ -655,7 +555,7 @@ function initScene(container) {
     }
 
     async function loadModelPlusIO() {
-      var glbPaths = ['/static/model/scene-draco.glb', 'static/model/scene-draco.glb']
+      var glbPaths = ['/model/scene-draco.glb', 'model/scene-draco.glb']
       var glbBuffer = null
       var usedPath = null
 
@@ -909,13 +809,6 @@ function initModelRefs(model) {
     }
   })
 
-  // 模型加载后应用之前收到的车牌数据
-  if (pendingLicensePlate) {
-    if (frontPlateNode && pendingLicensePlate.front) applyLicensePlate(frontPlateNode, pendingLicensePlate.front)
-    if (rearPlateNode && pendingLicensePlate.rear) applyLicensePlate(rearPlateNode, pendingLicensePlate.rear)
-    pendingLicensePlate = null
-  }
-
   // 14. RootNode
   rootNode = model.getObjectByName('RootNode')
   if (rootNode) {
@@ -923,7 +816,7 @@ function initModelRefs(model) {
     rootNode.rotation.y = Math.PI
   }
 
-  console.log('[TeslaScene renderjs] Model init complete')
+  console.log('[TeslaScene] Model init complete')
 }
 
 function animate(timestamp) {
@@ -1240,252 +1133,163 @@ function animate(timestamp) {
   } else {
     renderer.render(scene, camera)
   }
-
-
-
-  //   if (rootNode && entryDone) {
-  //   console.log('【可直接复制的最终角度】rootNode.rotation.y =', rootNode.rotation.y)
-  //   console.log('【相机位置】camera.position =', camera.position.x, camera.position.y, camera.position.z)
-  //   console.log('【相机目标】controls.target =', controls.target.x, controls.target.y, controls.target.z)
-  // }
 }
 
-export default {
-  mounted() {
-    console.log('[TeslaScene] mounted called')
-
-    // 尝试从 renderjs 上下文获取 ownerVm，不依赖 onStateChange 传入
-    if (!ownerVm && this.$ownerVm) {
-      ownerVm = this.$ownerVm
-      console.log('[TeslaScene] ownerVm set from this.$ownerVm in mounted')
-    }
-    // 兼容：部分环境下 ownerVm 在 this 上
-    if (!ownerVm && this.ownerVm) {
-      ownerVm = this.ownerVm
-      console.log('[TeslaScene] ownerVm set from this.ownerVm in mounted')
-    }
-
-    // nvue renderjs 中 this.$el 可能是 #comment 节点（条件编译导致）
-    // document.getElementById 可能返回 UNI-VIEW 包装元素（无尺寸）
-    // 需要用 querySelector 精确查找，并用 window 尺寸兜底
-    const cid = _containerId || this.containerId || this.$el?.id
-    console.log('[TeslaScene] containerId:', cid, '_containerId:', _containerId, 'this.$el type:', typeof this.$el, 'nodeName:', this.$el?.nodeName)
-
-    let container = null
-    // 优先通过 id 精确查找（避免 UNI-VIEW 包装元素）
-    if (cid) {
-      // querySelector 比 getElementById 更精确，可以匹配 id 属性
-      const found = document.querySelector('[id="' + cid + '"]')
-      if (found && found.id === cid) {
-        container = found
-        console.log('[TeslaScene] querySelector by id result:', container.nodeName, 'id:', container.id)
-      }
-    }
-    if (!container) {
-      container = document.getElementById(cid)
-      console.log('[TeslaScene] document.getElementById result:', container ? (container.nodeName + '#' + container.id) : 'null')
-    }
-    if (!container) {
-      container = document.querySelector('[id^="tesla-scene-"]')
-      console.log('[TeslaScene] querySelector fallback result:', container ? (container.nodeName + '#' + container.id) : 'null')
-    }
-    if (!container && this.$el && typeof this.$el.appendChild === 'function') {
-      container = this.$el
-      console.log('[TeslaScene] using this.$el as container')
-    }
-
-    if (!container) {
-      console.error('[TeslaScene] Container not found after all attempts')
-      return
-    }
-
-    // nvue renderjs 中容器可能没有尺寸，需要用 window 尺寸兜底
-    const winW = window.innerWidth || document.documentElement.clientWidth || 375
-    const winH = window.innerHeight || document.documentElement.clientHeight || 400
-    console.log('[TeslaScene] container dimensions before fix:', container.clientWidth, 'x', container.clientHeight, 'window:', winW, 'x', winH)
-    if (!container.clientWidth || !container.clientHeight) {
-      console.log('[TeslaScene] container has no dimensions, using window size as fallback')
-      container.style.width = winW + 'px'
-      container.style.height = winH + 'px'
-    }
-    // 如果仍然没有尺寸（极端情况）
-    if (!container.clientWidth || !container.clientHeight) {
-      console.log('[TeslaScene] container still has no dimensions, setting explicit size')
-      const parent = container.parentElement
-      if (parent && parent.clientWidth && parent.clientHeight) {
-        container.style.width = parent.clientWidth + 'px'
-        container.style.height = parent.clientHeight + 'px'
-      } else {
-        container.style.width = winW + 'px'
-        container.style.height = winH + 'px'
-      }
-    }
-    console.log('[TeslaScene] container dimensions after fix:', container.clientWidth, 'x', container.clientHeight)
-
-    // 平台检测：renderjs 运行在 webview 中，plus 可能不可用
-    // 使用多种方法检测 APP-PLUS 环境
-    const isAppPlus = typeof plus !== 'undefined' ||
-                      !!window.__uniappplus ||
-                      window.location.protocol === 'file:' ||
-                      !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.UNIAPP)
-    console.log('[TeslaScene] platform detection result: isAppPlus =', isAppPlus)
-    console.log('[TeslaScene] typeof plus:', typeof plus)
-    console.log('[TeslaScene] window.__uniappplus:', !!window.__uniappplus)
-    console.log('[TeslaScene] location.protocol:', window.location.protocol)
-    console.log('[TeslaScene] location.href:', window.location.href)
-
-    // 动态加载 Three.js IIFE bundle
-    if (window.THREE_BUNDLE) {
-      console.log('[TeslaScene] THREE_BUNDLE already loaded, using cached version')
-      THREE = window.THREE_BUNDLE.THREE
-      OrbitControls = window.THREE_BUNDLE.OrbitControls
-      GLTFLoader = window.THREE_BUNDLE.GLTFLoader
-      DRACOLoader = window.THREE_BUNDLE.DRACOLoader
-      EffectComposer = window.THREE_BUNDLE.EffectComposer
-      RenderPass = window.THREE_BUNDLE.RenderPass
-      EffectPass = window.THREE_BUNDLE.EffectPass
-      BloomEffect = window.THREE_BUNDLE.BloomEffect
-      console.log('[TeslaScene] THREE_BUNDLE check result: THREE =', !!THREE, 'DRACOLoader =', !!DRACOLoader)
-      initScene(container)
-      animate()
-    } else {
-      // APP-PLUS webview 中静态文件路径可能不同
-      // iOS APP-PLUS 的 webview 从 app bundle 的 www/ 目录加载
-      // 尝试多种路径：基于 baseUrl 的绝对路径、相对路径、根路径等
-      let scriptPaths
-      if (isAppPlus) {
-        const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1)
-        scriptPaths = [
-          baseUrl + 'static/three-bundle.js',
-          './static/three-bundle.js',
-          '/static/three-bundle.js',
-          'static/three-bundle.js',
-          '../static/three-bundle.js',
-        ]
-      } else {
-        scriptPaths = ['./static/three-bundle.js', '/static/three-bundle.js', 'static/three-bundle.js']
-      }
-
-      let loadIdx = 0
-      function tryLoadScript() {
-        if (loadIdx >= scriptPaths.length) {
-          console.error('[TeslaScene] All script paths failed to load three-bundle.js')
-          return
-        }
-        console.log('[TeslaScene] trying script path:', scriptPaths[loadIdx])
-        const script = document.createElement('script')
-        script.src = scriptPaths[loadIdx]
-        script.onload = () => {
-          console.log('[TeslaScene] script load success from:', scriptPaths[loadIdx])
-          const bundle = window.THREE_BUNDLE
-          console.log('[TeslaScene] THREE_BUNDLE check result after load:', !!bundle, !!bundle?.THREE)
-          if (!bundle || !bundle.THREE) {
-            console.error('[TeslaScene] THREE_BUNDLE not found after script load')
-            loadIdx++
-            tryLoadScript()
-            return
-          }
-          THREE = bundle.THREE
-          OrbitControls = bundle.OrbitControls
-          GLTFLoader = bundle.GLTFLoader
-          DRACOLoader = bundle.DRACOLoader
-          EffectComposer = bundle.EffectComposer
-          RenderPass = bundle.RenderPass
-          EffectPass = bundle.EffectPass
-          BloomEffect = bundle.BloomEffect
-          console.log('[TeslaScene] THREE_BUNDLE modules loaded: THREE=', !!THREE, 'GLTFLoader=', !!GLTFLoader, 'DRACOLoader=', !!DRACOLoader)
-          initScene(container)
-          animate()
-        }
-        script.onerror = (e) => {
-          console.warn('[TeslaScene] script load error from:', scriptPaths[loadIdx], e)
-          loadIdx++
-          tryLoadScript()
-        }
-        document.head.appendChild(script)
-      }
-      tryLoadScript()
-    }
-
-    window.addEventListener('resize', this.onResize)
-  },
-  beforeDestroy() {
-    cancelAnimationFrame(animId)
-    window.removeEventListener('resize', this.onResize)
-    if (renderer) {
-      renderer.domElement.removeEventListener('webglcontextlost', null)
-      renderer.domElement.removeEventListener('webglcontextrestored', null)
-      renderer.dispose()
-      renderer.forceContextLoss()
-    }
-    if (composer) composer.dispose()
-    if (scene) {
-      scene.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose()
-        if (obj.material) {
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
-          for (const m of mats) {
-            if (m.map) m.map.dispose()
-            m.dispose()
-          }
-        }
-      })
-    }
-  },
-  methods: {
-    onResize() {
-      // iOS APP-PLUS 兼容：this.$el 可能是 #comment，用 containerId 查找
-      const cid = _containerId || this.containerId || this.$el?.id
-      let el = cid ? document.getElementById(cid) : null
-      if (!el) el = document.querySelector('[id^="tesla-scene-"]')
-      if (!el && this.$el && typeof this.$el.appendChild === 'function') el = this.$el
-      if (!el || !camera || !renderer) return
-      const w = el.clientWidth || 375
-      const h = el.clientHeight || 400
-      camera.aspect = w / h
-      camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
-      composer.setSize(w, h)
-    },
-    onCanvasClick(event) {
-      if (!renderer || !raycaster) return
-      const rect = renderer.domElement.getBoundingClientRect()
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-      raycaster.setFromCamera(mouse, camera)
-      const keyMap = { 'DOOR-L-F': 'frontLeft', 'DOOR-R-F': 'frontRight', 'DOOR-L-B': 'rearLeft', 'DOOR-R-B': 'rearRight' }
-      if (doorMeshes.length > 0) {
-        const hits = raycaster.intersectObjects(doorMeshes.map(d => d.mesh), false)
-        if (hits.length > 0) {
-          const e = doorMeshes.find(d => d.mesh === hits[0].object)
-          if (e && ownerVm) { ownerVm.callMethod('onDoorClick', keyMap[e.doorName]); return }
-        }
-      }
-      if (trunkMeshes.length > 0) {
-        const hits = raycaster.intersectObjects(trunkMeshes, false)
-        if (hits.length > 0 && ownerVm) { ownerVm.callMethod('onTrunkClick'); return }
-      }
-    },
-    // 接收逻辑层 state 变化
-    onStateChange(newValue, oldValue, ownerVmParam) {
-      if (newValue) {
-        ownerState = newValue
-        ownerVm = ownerVmParam
-      }
-    },
-    onDarkModeChange(newValue) {
-      currentDarkMode = newValue
-    },
-    onLicensePlateChange(newValue) {
-      if (!newValue) return
-      pendingLicensePlate = newValue
-      if (frontPlateNode && newValue.front) applyLicensePlate(frontPlateNode, newValue.front)
-      if (rearPlateNode && newValue.rear) applyLicensePlate(rearPlateNode, newValue.rear)
-    },
-    onContainerIdChange(newValue) {
-      if (newValue) _containerId = newValue
-    }
+// 暴露给 nvue 页面的全局函数
+window.updateState = function (stateJson) {
+  try {
+    ownerState = typeof stateJson === 'string' ? JSON.parse(stateJson) : stateJson
+  } catch (e) {
+    console.error('[TeslaScene] updateState parse error:', e)
   }
 }
-</script>
 
+window.updateDarkMode = function (dark) {
+  currentDarkMode = !!dark
+}
+
+window.updateLicensePlate = function (dataJson) {
+  try {
+    const data = typeof dataJson === 'string' ? JSON.parse(dataJson) : dataJson
+    if (!data) return
+    if (frontPlateNode && data.front) applyLicensePlate(frontPlateNode, data.front)
+    if (rearPlateNode && data.rear) applyLicensePlate(rearPlateNode, data.rear)
+  } catch (e) {
+    console.error('[TeslaScene] updateLicensePlate parse error:', e)
+  }
+}
+
+// 点击事件处理
+function onCanvasClick(event) {
+  if (!renderer || !raycaster) return
+  const rect = renderer.domElement.getBoundingClientRect()
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  raycaster.setFromCamera(mouse, camera)
+  const keyMap = { 'DOOR-L-F': 'frontLeft', 'DOOR-R-F': 'frontRight', 'DOOR-L-B': 'rearLeft', 'DOOR-R-B': 'rearRight' }
+  if (doorMeshes.length > 0) {
+    const hits = raycaster.intersectObjects(doorMeshes.map(d => d.mesh), false)
+    if (hits.length > 0) {
+      const e = doorMeshes.find(d => d.mesh === hits[0].object)
+      if (e) { document.title = 'TESLA_DOOR:' + keyMap[e.doorName]; return }
+    }
+  }
+  if (trunkMeshes.length > 0) {
+    const hits = raycaster.intersectObjects(trunkMeshes, false)
+    if (hits.length > 0) { document.title = 'TESLA_TRUNK'; return }
+  }
+}
+
+// 窗口大小变化
+function onResize() {
+  const el = document.getElementById('container')
+  if (!el || !camera || !renderer) return
+  const w = el.clientWidth || 375
+  const h = el.clientHeight || 400
+  camera.aspect = w / h
+  camera.updateProjectionMatrix()
+  renderer.setSize(w, h)
+  composer.setSize(w, h)
+}
+
+// 初始化入口
+(function init() {
+  const container = document.getElementById('container')
+
+  // 确保容器有明确的尺寸
+  if (!container.clientWidth || !container.clientHeight) {
+    container.style.width = '100%'
+    container.style.height = '100%'
+    container.offsetHeight
+  }
+  if (!container.clientWidth || !container.clientHeight) {
+    const parent = container.parentElement
+    if (parent && parent.clientWidth && parent.clientHeight) {
+      container.style.width = parent.clientWidth + 'px'
+      container.style.height = parent.clientHeight + 'px'
+    } else {
+      container.style.width = container.style.width || '375px'
+      container.style.height = container.style.height || '400px'
+    }
+  }
+
+  // 平台检测
+  const isAppPlus = typeof plus !== 'undefined' ||
+                    !!window.__uniappplus ||
+                    window.location.protocol === 'file:' ||
+                    !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.UNIAPP)
+
+  // 动态加载 Three.js IIFE bundle
+  if (window.THREE_BUNDLE) {
+    console.log('[TeslaScene] THREE_BUNDLE already loaded, using cached version')
+    THREE = window.THREE_BUNDLE.THREE
+    OrbitControls = window.THREE_BUNDLE.OrbitControls
+    GLTFLoader = window.THREE_BUNDLE.GLTFLoader
+    DRACOLoader = window.THREE_BUNDLE.DRACOLoader
+    EffectComposer = window.THREE_BUNDLE.EffectComposer
+    RenderPass = window.THREE_BUNDLE.RenderPass
+    EffectPass = window.THREE_BUNDLE.EffectPass
+    BloomEffect = window.THREE_BUNDLE.BloomEffect
+    initScene(container)
+    animate()
+  } else {
+    let scriptPaths
+    if (isAppPlus) {
+      const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1)
+      scriptPaths = [
+        baseUrl + 'three-bundle.js',
+        './three-bundle.js',
+        '/three-bundle.js',
+        'three-bundle.js',
+        '../three-bundle.js',
+      ]
+    } else {
+      scriptPaths = ['./three-bundle.js', '/three-bundle.js', 'three-bundle.js']
+    }
+
+    let loadIdx = 0
+    function tryLoadScript() {
+      if (loadIdx >= scriptPaths.length) {
+        console.error('[TeslaScene] All script paths failed to load three-bundle.js')
+        return
+      }
+      console.log('[TeslaScene] trying script path:', scriptPaths[loadIdx])
+      const script = document.createElement('script')
+      script.src = scriptPaths[loadIdx]
+      script.onload = () => {
+        console.log('[TeslaScene] script load success from:', scriptPaths[loadIdx])
+        const bundle = window.THREE_BUNDLE
+        if (!bundle || !bundle.THREE) {
+          console.error('[TeslaScene] THREE_BUNDLE not found after script load')
+          loadIdx++
+          tryLoadScript()
+          return
+        }
+        THREE = bundle.THREE
+        OrbitControls = bundle.OrbitControls
+        GLTFLoader = bundle.GLTFLoader
+        DRACOLoader = bundle.DRACOLoader
+        EffectComposer = bundle.EffectComposer
+        RenderPass = bundle.RenderPass
+        EffectPass = bundle.EffectPass
+        BloomEffect = bundle.BloomEffect
+        initScene(container)
+        animate()
+      }
+      script.onerror = (e) => {
+        console.warn('[TeslaScene] script load error from:', scriptPaths[loadIdx], e)
+        loadIdx++
+        tryLoadScript()
+      }
+      document.head.appendChild(script)
+    }
+    tryLoadScript()
+  }
+
+  // 绑定事件
+  document.getElementById('container').addEventListener('click', onCanvasClick)
+  window.addEventListener('resize', onResize)
+})()
+</script>
+</body>
+</html>

@@ -80,7 +80,7 @@
             </view>
             <view class="charging-row" v-if="vehicleData.charging">
               <Icon name="BatteryCharging" :size="16" themeColor="charging" />
-              <text class="charging-text">充电中 {{ vehicleData.charge_power > 0 ? vehicleData.charge_power + ' kW · ' : '' }}{{ getChargeType(vehicleData).label }}充电</text>
+              <text class="charging-text">充电中 {{ vehicleData.charge_power > 0 ? (Math.round(vehicleData.charge_power * 10) / 10) + ' kW · ' : '' }}{{ getChargeType(vehicleData).label }}充电</text>
             </view>
             <view class="info-rows" style="margin-top: 20rpx;">
               <view class="info-row" v-if="vehicleData.charging_state">
@@ -102,7 +102,7 @@
                   <Icon name="Flash" :size="16" themeColor="inactive" />
                   <text class="info-label">充电器功率</text>
                 </view>
-                <text class="info-value">{{ vehicleData.charge_power }} kW</text>
+                <text class="info-value">{{ Math.round(vehicleData.charge_power * 10) / 10 }} kW</text>
               </view>
               <view class="info-row" v-if="vehicleData.charging">
                 <view class="info-left">

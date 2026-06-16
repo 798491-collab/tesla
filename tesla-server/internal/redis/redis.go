@@ -236,6 +236,37 @@ func SetVehicleRealtime(vin string, data interface{}) error {
 	return Set(key, data, 0) // 永不过期，保留最后已知实时数据
 }
 
+// UpdateVehicleRealtimeFields 增量更新实时数据（只覆盖实际推送的字段，不覆盖未推送的字段）
+func UpdateVehicleRealtimeFields(vin string, fields map[string]interface{}) error {
+	key := fmt.Sprintf("tesla:vehicle:%s:realtime", vin)
+
+	// 获取现有数据
+	var state map[string]interface{}
+	val, err := Client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		state = make(map[string]interface{})
+	} else if err != nil {
+		return err
+	} else {
+		if err := json.Unmarshal([]byte(val), &state); err != nil {
+			// 如果已有数据格式不对，重新创建
+			state = make(map[string]interface{})
+		}
+	}
+
+	// 增量合并
+	for k, v := range fields {
+		state[k] = v
+	}
+	state["updated_at"] = time.Now().UnixMilli()
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return Client.Set(ctx, key, data, 0).Err()
+}
+
 func GetVehicleRealtime(vin string, dest interface{}) error {
 	key := fmt.Sprintf("tesla:vehicle:%s:realtime", vin)
 	return Get(key, dest)

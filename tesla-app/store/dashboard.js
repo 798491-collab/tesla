@@ -2,13 +2,13 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 const DASHBOARD_TYPES = [
-  { key: 'instrument', label: '极简仪表盘', desc: '横屏双环仪表', icon: 'Dashboard' },
-  { key: 'horizontal', label: '全屏横屏仪表盘', desc: '特斯拉风格全屏驾驶舱', icon: 'Desktop' },
+  { key: 'instrument', label: '极简双环仪表', icon: 'Dashboard' },
+  { key: 'split', label: '导航-车辆状态仪表', icon: 'Speedometer' },
 ]
 
 const DASHBOARD_ROUTES = {
   instrument: '/pages/dashboard/instrument',
-  horizontal: '/pages/dashboard/HorizontalDashboard',
+  split: '/pages/dashboard/SplitDashboard',
 }
 
 export const useDashboardStore = defineStore('dashboard', () => {

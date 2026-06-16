@@ -18,7 +18,7 @@ func Init(cfg *config.DatabaseConfig) error {
 
 	var err error
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logger.Warn),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect database: %w", err)
@@ -41,6 +41,10 @@ func autoMigrate() error {
 		&models.GeoCache{},
 		&models.VehicleCommandLog{},
 		&models.AIAnalysis{},
+		&models.TelemetryRealtime{},
+		&models.TelemetryState{},
+		&models.TelemetryMedia{},
+		&models.TelemetryRaw{},
 	)
 }
 

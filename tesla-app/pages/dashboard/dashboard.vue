@@ -358,10 +358,8 @@
         mediaVolumeDown
     } from '@/api/control.js'
     import {
-        getVehicleState,
         wakeVehicle
     } from '@/api/vehicle.js'
-    
 
     const statusBarHeight = ref(44) // 默认值
     
@@ -439,7 +437,10 @@
     const vehicleData = computed(() => vehicleDataStore.data)
     const stateOutput = computed(() => vehicleDataStore.stateOutput)
     const batteryPercent = computed(() => vehicleData.value?.soc || 0)
-    const rangeKm = computed(() => vehicleData.value?.range_km || 0)
+    const rangeKm = computed(() => {
+        const range = vehicleData.value?.range_km || 0
+        return typeof range === 'number' ? range.toFixed(1) : range
+    })
     const totalKm = computed(() => {
         const odometer = vehicleData.value?.odometer_km
         if (odometer === null || odometer === undefined) return '--'
@@ -486,7 +487,7 @@
     const chargeDisplayText = computed(() => {
       const power = chargePower.value
       const type = chargeTypeLabel.value
-      if (power > 0) return `${power} kW · ${type}`
+      if (power > 0) return `${Math.round(Math.abs(power) * 10) / 10} kW · ${type}`
       return type
     })
     const recentTripDistance = computed(() => {
@@ -532,7 +533,7 @@
             Caraoke: '卡拉OK',
             USB: 'USB', 'USB Drive': 'USB',
             // 中国区常见媒体源
-            'NetEase Cloud Music': '网易云音乐', 'QQ Music': 'QQ音乐',
+            'NetEase Cloud Music': '网易云音乐', 'NetEaseMusicWeb': '网易云音乐', 'QQ Music': 'QQ音乐',
             'KuGou Music': '酷狗音乐',
         }
         return sourceMap[mediaAudioSource.value] || mediaAudioSource.value || '未知'
@@ -626,19 +627,12 @@
             })
             try {
                 await wakeVehicle(currentVIN.value)
-                uni.showLoading({
-                    title: '车辆唤醒中，等待上线...'
+                uni.hideLoading()
+                uni.showToast({
+                    title: '唤醒命令已发送，等待车辆上线...',
+                    icon: 'none',
+                    duration: 3000
                 })
-                await new Promise(resolve => setTimeout(resolve, 5000))
-                for (let i = 0; i < 6; i++) {
-                    try {
-                        const stateRes = await getVehicleState(currentVIN.value)
-                        if (stateRes.data?.online) {
-                            break
-                        }
-                    } catch (e) {}
-                    await new Promise(resolve => setTimeout(resolve, 3000))
-                }
             } catch (err) {
                 uni.hideLoading()
                 uni.showToast({
@@ -773,10 +767,10 @@
         },
     })
 
-    const licensePlateObj = computed(() => ({
-        front: currentVehicle.value?.license_plate_front || '',
-        rear: currentVehicle.value?.license_plate_rear || ''
-    }))
+    const licensePlateObj = computed(() => {
+        const plate = vehicleStore.getLicensePlate(currentVehicle.value?.vin) || ''
+        return { front: plate, rear: plate }
+    })
 
     // 同步车辆数据到3D模型
     function syncVehicleDataToScene() {
@@ -968,6 +962,12 @@
     })
 
     onShow(async () => {
+        // #ifdef APP-PLUS
+        // 确保竖屏（从仪表盘横屏页面返回时恢复）
+        try { plus.screen.lockOrientation('portrait-primary') } catch (e) {}
+        try { plus.navigator.setFullscreen(false) } catch (e) {}
+        try { plus.navigator.showSystemNavigation() } catch (e) {}
+        // #endif
         if (!userStore.checkTokenExpiry()) {
             uni.reLaunch({
                 url: '/pages/login/login'

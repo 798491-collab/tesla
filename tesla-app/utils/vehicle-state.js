@@ -207,17 +207,13 @@ export function getDisplayState(stateOutput, vehicleData) {
   const gear = vehicleData?.gear || ''
 
   if (isCharging) return DISPLAY_STATE_MAP.charging
-  if (speed > 1) return DISPLAY_STATE_MAP.driving
+  if (gear === 'D') return DISPLAY_STATE_MAP.driving
   if (gear === 'R') return DISPLAY_STATE_MAP.reversing
+  if (speed > 1) return DISPLAY_STATE_MAP.driving
   if (onlineState === 'climate_on') return DISPLAY_STATE_MAP.climate_on
   if (onlineState === 'waking') return DISPLAY_STATE_MAP.waking
   if (onlineState === 'asleep') return DISPLAY_STATE_MAP.asleep
   if (onlineState === 'offline') return DISPLAY_STATE_MAP.offline
-  if (onlineState === 'online' || onlineState === 'driving'
-    || onlineState === 'sentry_on' || onlineState === 'updating') {
-    return DISPLAY_STATE_MAP.parked
-  }
-  if (speed === 0 && gear === 'P') return DISPLAY_STATE_MAP.parked
   return DISPLAY_STATE_MAP.parked
 }
 

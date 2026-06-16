@@ -15,11 +15,17 @@
 			"autoclose": true,
 			"delay": 0
 		},
-		"schemes": ["teslaapp"],
+		"safeArea": {
+			"bottom": {
+				"offset": "none"
+			}
+		},
 		"modules": {
 			"Maps": {},
 			"Bluetooth": {},
-			"Geolocation": {}
+			"Geolocation": {},
+			"SQLite": {},
+			"Speech": {}
 		},
 		"distribute": {
 			"orientation": ["portrait-primary", "landscape-primary", "landscape-secondary"],
@@ -43,7 +49,15 @@
 					"<uses-permission android:name=\"android.permission.BLUETOOTH_ADMIN\" />",
 					"<uses-permission android:name=\"android.permission.BLUETOOTH_SCAN\" />",
 					"<uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" />",
-					"<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />"
+					"<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />",
+					"<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />",
+					"<uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\" />",
+					"<uses-permission android:name=\"android.permission.ACCESS_LOCATION_EXTRA_COMMANDS\" />",
+					"<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />",
+					"<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />",
+					"<uses-permission android:name=\"android.permission.MANAGE_EXTERNAL_STORAGE\" />",
+					"<uses-permission android:name=\"android.permission.INTERNET\" />",
+					"<meta-data android:name=\"TencentMapSDK\" android:value=\"YOUR_TENCENT_MAP_KEY\" />"
 				]
 			},
 			"ios": {
@@ -61,10 +75,8 @@
 					}
 				},
 				"geolocation": {
-					"tencent": {
-						"__platform__": ["ios", "android"],
-						"apikey_ios": "YOUR_TENCENT_MAP_KEY",
-						"apikey_android": "YOUR_TENCENT_MAP_KEY"
+					"system": {
+						"__platform__": ["ios"]
 					}
 				}
 			},
@@ -100,6 +112,22 @@
 					}
 				}
 			}
+		},
+		"nativePlugins": {
+			"tencent-navi": {
+				"__plugin_info__": {
+					"name": "腾讯地图导航",
+					"description": "腾讯地图导航原生插件 - 支持地图显示、路线规划、导航、语音播报",
+					"platforms": "Android",
+					"url": "",
+					"android_package_name": "",
+					"ios_bundle_id": "",
+					"isCloud": false,
+					"bought": -1,
+					"pid": "",
+					"parameters": {}
+				}
+			}
 		}
 	},
 	"quickapp": {},
@@ -122,6 +150,9 @@
 		"usingComponents": true,
 		"optimization": {
 			"subPackages": true
+		},
+		"unipush": {
+			"enable": true
 		}
 	},
 	"mp-alipay": {

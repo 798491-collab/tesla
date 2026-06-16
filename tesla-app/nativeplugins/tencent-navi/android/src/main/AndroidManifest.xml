@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.tencent.navi.plugin">
+
+    <application>
+        <!-- Key 由 .env 的 VITE_TENCENT_MAP_KEY 控制，通过 JS 层 initNaviService({ key }) 传入 -->
+        <!-- manifest.json 的 distribute.android.permissions 中也配置了 TencentMapSDK meta-data，云打包时生效 -->
+    </application>
+</manifest>
