@@ -33,6 +33,16 @@
                 <text class="summary-label">剩余能量</text>
                 <text class="summary-value">{{ formatValue(data.energy_remaining, ' kWh', 1) }}</text>
               </view>
+              <view class="summary-item">
+                <Icon name="Navigate" :size="18" themeColor="primary" />
+                <text class="summary-label">额定续航</text>
+                <text class="summary-value">{{ formatValue(data.rated_range_km, ' km', 0) }}</text>
+              </view>
+              <view class="summary-item">
+                <Icon name="Speedometer" :size="18" themeColor="primary" />
+                <text class="summary-label">总里程</text>
+                <text class="summary-value">{{ formatValue(data.odometer_km, ' km', 1) }}</text>
+              </view>
             </view>
           </view>
           <view class="soc-bar-track">
@@ -114,6 +124,11 @@
             </view>
             <view class="data-divider"></view>
             <view class="data-row">
+              <text class="data-label">充满时间</text>
+              <text class="data-value">{{ formatHours(data.time_to_full_charge) }}</text>
+            </view>
+            <view class="data-divider"></view>
+            <view class="data-row">
               <text class="data-label">充电速度</text>
               <text class="data-value">{{ formatValue(data.charge_speed, ' km/h', 0) }}</text>
             </view>
@@ -134,8 +149,18 @@
             </view>
             <view class="data-divider"></view>
             <view class="data-row">
+              <text class="data-label">超充状态</text>
+              <text class="data-value">{{ data.supercharging != null ? (data.supercharging ? '超充中' : '否') : '--' }}</text>
+            </view>
+            <view class="data-divider"></view>
+            <view class="data-row">
               <text class="data-label">充电口盖</text>
               <text class="data-value">{{ data.charge_port_door_open ? '已打开' : '已关闭' }}</text>
+            </view>
+            <view class="data-divider"></view>
+            <view class="data-row">
+              <text class="data-label">充电口状态</text>
+              <text class="data-value">{{ data.charge_port_open != null ? (data.charge_port_open ? '已打开' : '已关闭') : '--' }}</text>
             </view>
             <view class="data-divider"></view>
             <view class="data-row">
@@ -394,6 +419,14 @@ function formatMinutes(val) {
   if (val <= 0) return '--'
   const h = Math.floor(val / 60)
   const m = val % 60
+  if (h > 0) return `${h}h ${m}min`
+  return `${m}min`
+}
+
+function formatHours(val) {
+  if (val == null || val <= 0) return '--'
+  const h = Math.floor(val)
+  const m = Math.round((val - h) * 60)
   if (h > 0) return `${h}h ${m}min`
   return `${m}min`
 }

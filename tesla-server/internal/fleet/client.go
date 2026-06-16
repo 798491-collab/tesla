@@ -407,22 +407,132 @@ func ExtractRealtimeFromSimple(data *SimpleVehicleData) map[string]interface{} {
 		m["soc"] = float64(data.Soc)
 		m["battery_level"] = float64(data.Soc)
 	}
+	if data.UsableSoc != 0 {
+		m["usable_soc"] = data.UsableSoc
+	}
+	if data.RangeKm != 0 {
+		m["range_km"] = data.RangeKm
+	}
+	if data.BatteryTemp != 0 {
+		m["battery_temp"] = data.BatteryTemp
+	}
+	if data.EnergyRemaining != 0 {
+		m["energy_remaining"] = data.EnergyRemaining
+	}
 	if data.ChargePower != 0 {
 		m["dc_charging_power"] = data.ChargePower
+		m["charge_power"] = data.ChargePower
+	}
+	if data.DcChargingPower != 0 {
+		m["dc_charging_power"] = data.DcChargingPower
+	}
+	if data.AcChargingPower != 0 {
+		m["ac_charging_power"] = data.AcChargingPower
 	}
 	if data.Voltage != 0 {
 		m["charger_voltage"] = float64(data.Voltage)
-		m["pack_voltage"] = float64(data.Voltage)
+		m["voltage"] = data.Voltage
+	}
+	if data.ChargerVoltage != 0 {
+		m["charger_voltage"] = data.ChargerVoltage
 	}
 	if data.Ampere != 0 {
 		m["charge_amps"] = data.Ampere
-		m["pack_current"] = data.Ampere
+		m["ampere"] = data.Ampere
+	}
+	if data.ChargeAmps != 0 {
+		m["charge_amps"] = data.ChargeAmps
+	}
+	if data.PackVoltage != 0 {
+		m["pack_voltage"] = data.PackVoltage
+	}
+	if data.PackCurrent != 0 {
+		m["pack_current"] = data.PackCurrent
 	}
 	if data.ChargingState != "" {
 		m["charge_state"] = data.ChargingState
+		m["charging_state"] = data.ChargingState
 	}
 	if data.Supercharging {
 		m["fast_charger_present"] = data.Supercharging
+	}
+	if data.FastChargerPresent {
+		m["fast_charger_present"] = data.FastChargerPresent
+	}
+	if data.ChargeLimitSoc != 0 {
+		m["charge_limit_soc"] = data.ChargeLimitSoc
+	}
+	if data.ChargeSpeed != 0 {
+		m["charge_speed"] = data.ChargeSpeed
+	}
+	if data.AddedEnergy != 0 {
+		m["added_energy"] = data.AddedEnergy
+	}
+	if data.ChargeEnergyAdded != 0 {
+		m["charge_energy_added"] = data.ChargeEnergyAdded
+	}
+	if data.MinutesToFull != 0 {
+		m["minutes_to_full"] = data.MinutesToFull
+	}
+	if data.TimeToFullCharge != 0 {
+		m["time_to_full_charge"] = data.TimeToFullCharge
+	}
+	if data.ChargePortDoorOpen {
+		m["charge_port_door_open"] = data.ChargePortDoorOpen
+	}
+	if data.ChargePortOpen {
+		m["charge_port_open"] = data.ChargePortOpen
+	}
+	if data.ChargePortLatch != "" {
+		m["charge_port_latch"] = data.ChargePortLatch
+	}
+	if data.ChargeCurrentRequest != 0 {
+		m["charge_current_request"] = data.ChargeCurrentRequest
+	}
+	if data.ChargeCurrentRequestMax != 0 {
+		m["charge_current_request_max"] = data.ChargeCurrentRequestMax
+	}
+	if data.DcChargingEnergyIn != 0 {
+		m["dc_charging_energy_in"] = data.DcChargingEnergyIn
+	}
+	if data.AcChargingEnergyIn != 0 {
+		m["ac_charging_energy_in"] = data.AcChargingEnergyIn
+	}
+	if data.ChargerPhases != 0 {
+		m["charger_phases"] = data.ChargerPhases
+	}
+	if data.ModuleTempMax != 0 {
+		m["module_temp_max"] = data.ModuleTempMax
+	}
+	if data.ModuleTempMin != 0 {
+		m["module_temp_min"] = data.ModuleTempMin
+	}
+	if data.BrickVoltageMax != 0 {
+		m["brick_voltage_max"] = data.BrickVoltageMax
+	}
+	if data.BrickVoltageMin != 0 {
+		m["brick_voltage_min"] = data.BrickVoltageMin
+	}
+	if data.BatteryHeaterOn {
+		m["battery_heater_on"] = data.BatteryHeaterOn
+	}
+	if data.BmsState != nil {
+		m["bms_state"] = data.BmsState
+	}
+	if data.BmsFullChargeComplete {
+		m["bms_full_charge_complete"] = data.BmsFullChargeComplete
+	}
+	if data.DcdcEnable {
+		m["dcdc_enable"] = data.DcdcEnable
+	}
+	if data.IsolationResistance != 0 {
+		m["isolation_resistance"] = data.IsolationResistance
+	}
+	if data.LifetimeEnergyUsed != 0 {
+		m["lifetime_energy_used"] = data.LifetimeEnergyUsed
+	}
+	if data.PreconditioningEnabled {
+		m["preconditioning_enabled"] = data.PreconditioningEnabled
 	}
 	m["updated_at"] = time.Now().UnixMilli()
 	return m
@@ -595,6 +705,129 @@ func ExtractStateFromSimple(data *SimpleVehicleData) map[string]interface{} {
 	if data.CurrentLimitMph != 0 {
 		m["current_limit_mph"] = data.CurrentLimitMph
 	}
+
+	// 遥测扩展字段：从 SimpleVehicleData 提取，确保 WS state_update 事件包含这些字段
+	if data.RatedRangeKm != 0 {
+		m["rated_range_km"] = data.RatedRangeKm
+	}
+	if data.WheelType != "" {
+		m["wheel_type"] = data.WheelType
+	}
+	if data.RoofColor != "" {
+		m["roof_color"] = data.RoofColor
+	}
+	if data.Trim != "" {
+		m["trim"] = data.Trim
+	}
+	if data.EfficiencyPackage != "" {
+		m["efficiency_package"] = data.EfficiencyPackage
+	}
+	if data.BatteryLevel != 0 {
+		m["battery_level"] = data.BatteryLevel
+	}
+	if data.EnergyRemaining != 0 {
+		m["energy_remaining"] = data.EnergyRemaining
+	}
+	if data.TimeToFullCharge != 0 {
+		m["time_to_full_charge"] = data.TimeToFullCharge
+	}
+	if data.DcChargingPower != 0 {
+		m["dc_charging_power"] = data.DcChargingPower
+	}
+	if data.AcChargingPower != 0 {
+		m["ac_charging_power"] = data.AcChargingPower
+	}
+	if data.ChargeAmps != 0 {
+		m["charge_amps"] = data.ChargeAmps
+	}
+	if data.ChargerVoltage != 0 {
+		m["charger_voltage"] = data.ChargerVoltage
+	}
+	if data.FastChargerPresent {
+		m["fast_charger_present"] = data.FastChargerPresent
+	}
+	if data.ChargePortOpen {
+		m["charge_port_open"] = data.ChargePortOpen
+	}
+	if data.ChargeCurrentRequest != 0 {
+		m["charge_current_request"] = data.ChargeCurrentRequest
+	}
+	if data.ChargeCurrentRequestMax != 0 {
+		m["charge_current_request_max"] = data.ChargeCurrentRequestMax
+	}
+	if data.DcChargingEnergyIn != 0 {
+		m["dc_charging_energy_in"] = data.DcChargingEnergyIn
+	}
+	if data.AcChargingEnergyIn != 0 {
+		m["ac_charging_energy_in"] = data.AcChargingEnergyIn
+	}
+	if data.ChargePortColdWeatherMode {
+		m["charge_port_cold_weather_mode"] = data.ChargePortColdWeatherMode
+	}
+	if data.ChargeEnableRequest {
+		m["charge_enable_request"] = data.ChargeEnableRequest
+	}
+	if data.ModuleTempMax != 0 {
+		m["module_temp_max"] = data.ModuleTempMax
+	}
+	if data.ModuleTempMin != 0 {
+		m["module_temp_min"] = data.ModuleTempMin
+	}
+	if data.NumModuleTempMax != 0 {
+		m["num_module_temp_max"] = data.NumModuleTempMax
+	}
+	if data.NumModuleTempMin != 0 {
+		m["num_module_temp_min"] = data.NumModuleTempMin
+	}
+	if data.BrickVoltageMax != 0 {
+		m["brick_voltage_max"] = data.BrickVoltageMax
+	}
+	if data.BrickVoltageMin != 0 {
+		m["brick_voltage_min"] = data.BrickVoltageMin
+	}
+	if data.NumBrickVoltageMax != 0 {
+		m["num_brick_voltage_max"] = data.NumBrickVoltageMax
+	}
+	if data.NumBrickVoltageMin != 0 {
+		m["num_brick_voltage_min"] = data.NumBrickVoltageMin
+	}
+	if data.BmsState != nil {
+		m["bms_state"] = data.BmsState
+	}
+	if data.BmsFullChargeComplete {
+		m["bms_full_charge_complete"] = data.BmsFullChargeComplete
+	}
+	if data.DcdcEnable {
+		m["dcdc_enable"] = data.DcdcEnable
+	}
+	if data.IsolationResistance != 0 {
+		m["isolation_resistance"] = data.IsolationResistance
+	}
+	if data.LifetimeEnergyUsed != 0 {
+		m["lifetime_energy_used"] = data.LifetimeEnergyUsed
+	}
+	if data.PreconditioningEnabled {
+		m["preconditioning_enabled"] = data.PreconditioningEnabled
+	}
+	if data.NotEnoughPowerToHeat {
+		m["not_enough_power_to_heat"] = data.NotEnoughPowerToHeat
+	}
+	if data.Hvil {
+		m["hvil"] = data.Hvil
+	}
+	if data.ChargingCableType != "" {
+		m["charging_cable_type"] = data.ChargingCableType
+	}
+	if data.PackVoltage != 0 {
+		m["pack_voltage"] = data.PackVoltage
+	}
+	if data.PackCurrent != 0 {
+		m["pack_current"] = data.PackCurrent
+	}
+	if data.VehicleName != "" {
+		m["vehicle_name"] = data.VehicleName
+	}
+
 	m["updated_at"] = time.Now().UnixMilli()
 	return m
 }
@@ -747,6 +980,48 @@ type SimpleVehicleData struct {
 	AutosteerState           string  `json:"autosteer_state"`
 	CruiseControlState       string  `json:"cruise_control_state"`
 	LaneKeepingState         string  `json:"lane_keeping_state"`
+
+	// 遥测扩展字段（Fleet API 不返回，由遥测写入 Redis，omitempty 防止 Fleet API 保存时覆盖遥测值）
+	RatedRangeKm            float64 `json:"rated_range_km,omitempty"`
+	WheelType               string  `json:"wheel_type,omitempty"`
+	RoofColor               string  `json:"roof_color,omitempty"`
+	Trim                    string  `json:"trim,omitempty"`
+	EfficiencyPackage       string  `json:"efficiency_package,omitempty"`
+	BatteryLevel            float64 `json:"battery_level,omitempty"`
+	EnergyRemaining         float64 `json:"energy_remaining,omitempty"`
+	TimeToFullCharge        float64 `json:"time_to_full_charge,omitempty"`
+	DcChargingPower         float64 `json:"dc_charging_power,omitempty"`
+	AcChargingPower         float64 `json:"ac_charging_power,omitempty"`
+	ChargeAmps              float64 `json:"charge_amps,omitempty"`
+	ChargerVoltage          float64 `json:"charger_voltage,omitempty"`
+	FastChargerPresent      bool    `json:"fast_charger_present,omitempty"`
+	ChargePortOpen          bool    `json:"charge_port_open,omitempty"`
+	ChargeCurrentRequest    int     `json:"charge_current_request,omitempty"`
+	ChargeCurrentRequestMax int     `json:"charge_current_request_max,omitempty"`
+	DcChargingEnergyIn      float64 `json:"dc_charging_energy_in,omitempty"`
+	AcChargingEnergyIn      float64 `json:"ac_charging_energy_in,omitempty"`
+	ChargePortColdWeatherMode bool  `json:"charge_port_cold_weather_mode,omitempty"`
+	ChargeEnableRequest     bool    `json:"charge_enable_request,omitempty"`
+	ModuleTempMax           float64 `json:"module_temp_max,omitempty"`
+	ModuleTempMin           float64 `json:"module_temp_min,omitempty"`
+	NumModuleTempMax        int     `json:"num_module_temp_max,omitempty"`
+	NumModuleTempMin        int     `json:"num_module_temp_min,omitempty"`
+	BrickVoltageMax         float64 `json:"brick_voltage_max,omitempty"`
+	BrickVoltageMin         float64 `json:"brick_voltage_min,omitempty"`
+	NumBrickVoltageMax      int     `json:"num_brick_voltage_max,omitempty"`
+	NumBrickVoltageMin      int     `json:"num_brick_voltage_min,omitempty"`
+	BmsState                interface{} `json:"bms_state,omitempty"` // 遥测可能返回 string 或 int
+	BmsFullChargeComplete   bool    `json:"bms_full_charge_complete,omitempty"`
+	DcdcEnable              bool    `json:"dcdc_enable,omitempty"`
+	IsolationResistance     float64 `json:"isolation_resistance,omitempty"`
+	LifetimeEnergyUsed      float64 `json:"lifetime_energy_used,omitempty"`
+	PreconditioningEnabled  bool    `json:"preconditioning_enabled,omitempty"`
+	NotEnoughPowerToHeat    bool    `json:"not_enough_power_to_heat,omitempty"`
+	Hvil                    bool    `json:"hvil,omitempty"`
+	ChargingCableType       string  `json:"charging_cable_type,omitempty"`
+	PackVoltage             float64 `json:"pack_voltage,omitempty"`
+	PackCurrent             float64 `json:"pack_current,omitempty"`
+	VehicleName             string  `json:"vehicle_name,omitempty"`
 }
 
 // VirtualKeyStatus 虚拟钥匙状态
@@ -1184,6 +1459,12 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		NowPlayingDuration:      data.Response.MediaInfo.NowPlayingDuration,
 		NowPlayingElapsed:       data.Response.MediaInfo.NowPlayingElapsed,
 		CenterDisplayState:  data.Response.VehicleState.CenterDisplayState,
+		// 遥测别名字段：Fleet API 返回的数据映射到前端期望的字段名
+		BatteryLevel:       float64(data.Response.ChargeState.BatteryLevel),
+		ChargerVoltage:     float64(data.Response.ChargeState.ChargerVoltage),
+		ChargeAmps:         float64(data.Response.ChargeState.ChargerCurrent),
+		FastChargerPresent: data.Response.ChargeState.FastChargerPresent,
+		ChargePortOpen:     data.Response.ChargeState.ChargePortOpen,
 	}, nil
 }
 

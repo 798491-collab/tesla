@@ -26,6 +26,34 @@
             </view>
             <view class="info-row">
               <view class="info-left">
+                <Icon name="CarSport" :size="16" themeColor="inactive" />
+                <text class="info-label">车型</text>
+              </view>
+              <text class="info-value">{{ vehicleData.car_type || '--' }}</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
+                <Icon name="Settings" :size="16" themeColor="inactive" />
+                <text class="info-label">软件版本</text>
+              </view>
+              <text class="info-value">{{ vehicleData.version || '--' }}</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
+                <Icon name="ColorPalette" :size="16" themeColor="inactive" />
+                <text class="info-label">外观颜色</text>
+              </view>
+              <text class="info-value">{{ vehicleData.exterior_color || '--' }}</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
+                <Icon name="Speedometer" :size="16" themeColor="inactive" />
+                <text class="info-label">轮毂</text>
+              </view>
+              <text class="info-value">{{ vehicleData.wheel_type || '--' }}</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
                 <Icon name="Flash" :size="16" themeColor="inactive" />
                 <text class="info-label">状态</text>
               </view>
@@ -83,6 +111,48 @@
               <text class="charging-text">充电中 {{ vehicleData.charge_power > 0 ? (Math.round(vehicleData.charge_power * 10) / 10) + ' kW · ' : '' }}{{ getChargeType(vehicleData).label }}充电</text>
             </view>
             <view class="info-rows" style="margin-top: 20rpx;">
+              <view class="info-row">
+                <view class="info-left">
+                  <Icon name="BatteryFull" :size="16" themeColor="inactive" />
+                  <text class="info-label">可用SOC</text>
+                </view>
+                <text class="info-value">{{ vehicleData.usable_soc != null ? vehicleData.usable_soc + '%' : '--' }}</text>
+              </view>
+              <view class="info-row">
+                <view class="info-left">
+                  <Icon name="Thermometer" :size="16" themeColor="inactive" />
+                  <text class="info-label">电池温度</text>
+                </view>
+                <text class="info-value">{{ vehicleData.battery_temp != null ? vehicleData.battery_temp + '°C' : '--' }}</text>
+              </view>
+              <view class="info-row">
+                <view class="info-left">
+                  <Icon name="Navigate" :size="16" themeColor="inactive" />
+                  <text class="info-label">额定续航</text>
+                </view>
+                <text class="info-value">{{ vehicleData.rated_range_km != null ? Math.round(vehicleData.rated_range_km) + ' km' : '--' }}</text>
+              </view>
+              <view class="info-row">
+                <view class="info-left">
+                  <Icon name="Flash" :size="16" themeColor="inactive" />
+                  <text class="info-label">剩余能量</text>
+                </view>
+                <text class="info-value">{{ vehicleData.energy_remaining != null ? Number(vehicleData.energy_remaining).toFixed(1) + ' kWh' : '--' }}</text>
+              </view>
+              <view class="info-row">
+                <view class="info-left">
+                  <Icon name="BatteryCharging" :size="16" themeColor="inactive" />
+                  <text class="info-label">电池包电压</text>
+                </view>
+                <text class="info-value">{{ vehicleData.pack_voltage != null ? Number(vehicleData.pack_voltage).toFixed(1) + ' V' : '--' }}</text>
+              </view>
+              <view class="info-row">
+                <view class="info-left">
+                  <Icon name="BatteryCharging" :size="16" themeColor="inactive" />
+                  <text class="info-label">电池包电流</text>
+                </view>
+                <text class="info-value">{{ vehicleData.pack_current != null ? Number(vehicleData.pack_current).toFixed(1) + ' A' : '--' }}</text>
+              </view>
               <view class="info-row" v-if="vehicleData.charging_state">
                 <view class="info-left">
                   <Icon name="Flash" :size="16" themeColor="inactive" />
@@ -125,6 +195,27 @@
                 </view>
                 <text class="info-value">{{ vehicleData.ampere }} A</text>
               </view>
+              <view class="info-row" v-if="vehicleData.charge_limit_soc">
+                <view class="info-left">
+                  <Icon name="Settings" :size="16" themeColor="inactive" />
+                  <text class="info-label">充电限制</text>
+                </view>
+                <text class="info-value">{{ vehicleData.charge_limit_soc }}%</text>
+              </view>
+              <view class="info-row" v-if="vehicleData.minutes_to_full > 0">
+                <view class="info-left">
+                  <Icon name="Time" :size="16" themeColor="inactive" />
+                  <text class="info-label">充满剩余</text>
+                </view>
+                <text class="info-value">{{ formatMinutes(vehicleData.minutes_to_full) }}</text>
+              </view>
+              <view class="info-row" v-if="vehicleData.time_to_full_charge > 0">
+                <view class="info-left">
+                  <Icon name="Time" :size="16" themeColor="inactive" />
+                  <text class="info-label">充满时间</text>
+                </view>
+                <text class="info-value">{{ formatHours(vehicleData.time_to_full_charge) }}</text>
+              </view>
               <view class="info-row" v-if="vehicleData.added_energy">
                 <view class="info-left">
                   <Icon name="Add" :size="16" themeColor="inactive" />
@@ -164,6 +255,48 @@
                 <text class="info-label">空调</text>
               </view>
               <text class="info-value" :style="{ color: vehicleData.is_ac_on ? acOnColor : inactiveIconColor }">{{ vehicleData.is_ac_on ? '开启' : '关闭' }}</text>
+            </view>
+            <view class="info-row" v-if="vehicleData.is_climate_on">
+              <view class="info-left">
+                <Icon name="Thermometer" :size="16" themeColor="inactive" />
+                <text class="info-label">空调状态</text>
+              </view>
+              <text class="info-value" :style="{ color: acOnColor }">运行中</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
+                <Icon name="Person" :size="16" themeColor="inactive" />
+                <text class="info-label">驾驶位温度</text>
+              </view>
+              <text class="info-value">{{ vehicleData.driver_temp_setting != null ? vehicleData.driver_temp_setting + '°C' : '--' }}</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
+                <Icon name="Person" :size="16" themeColor="inactive" />
+                <text class="info-label">副驾温度</text>
+              </view>
+              <text class="info-value">{{ vehicleData.passenger_temp_setting != null ? vehicleData.passenger_temp_setting + '°C' : '--' }}</text>
+            </view>
+            <view class="info-row" v-if="vehicleData.hvac_fan_speed != null">
+              <view class="info-left">
+                <Icon name="Settings" :size="16" themeColor="inactive" />
+                <text class="info-label">风扇档位</text>
+              </view>
+              <text class="info-value">{{ vehicleData.hvac_fan_speed }}</text>
+            </view>
+            <view class="info-row">
+              <view class="info-left">
+                <Icon name="Settings" :size="16" themeColor="inactive" />
+                <text class="info-label">方向盘加热</text>
+              </view>
+              <text class="info-value" :style="{ color: vehicleData.steering_wheel_heater ? acOnColor : inactiveIconColor }">{{ vehicleData.steering_wheel_heater ? '开启' : '关闭' }}</text>
+            </view>
+            <view class="info-row" v-if="vehicleData.seat_heater">
+              <view class="info-left">
+                <Icon name="Person" :size="16" themeColor="inactive" />
+                <text class="info-label">座椅加热</text>
+              </view>
+              <text class="info-value">{{ formatSeatHeater(vehicleData.seat_heater) }}</text>
             </view>
           </view>
         </view>
@@ -412,6 +545,33 @@ const formatChargingState = (s) => {
   if (s === 'Stopped') return '已停止'
   if (s === 'Disconnected') return '未连接'
   return s || '未知'
+}
+
+const formatMinutes = (val) => {
+  if (val == null || val <= 0) return '--'
+  const h = Math.floor(val / 60)
+  const m = val % 60
+  if (h > 0) return `${h}h ${m}min`
+  return `${m}min`
+}
+
+const formatHours = (val) => {
+  if (val == null || val <= 0) return '--'
+  const h = Math.floor(val)
+  const m = Math.round((val - h) * 60)
+  if (h > 0) return `${h}h ${m}min`
+  return `${m}min`
+}
+
+const formatSeatHeater = (sh) => {
+  if (!sh) return '--'
+  const parts = []
+  if (sh.left > 0) parts.push('左前' + sh.left + '档')
+  if (sh.right > 0) parts.push('右前' + sh.right + '档')
+  if (sh.rear_left > 0) parts.push('左后' + sh.rear_left + '档')
+  if (sh.rear_right > 0) parts.push('右后' + sh.rear_right + '档')
+  if (sh.rear_center > 0) parts.push('后中' + sh.rear_center + '档')
+  return parts.length > 0 ? parts.join(' · ') : '全部关闭'
 }
 
 const formatGear = (g) => {

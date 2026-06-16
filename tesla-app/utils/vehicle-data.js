@@ -3,14 +3,37 @@ import { getVehicleState } from '@/api/vehicle.js'
 import { startSimulator, stopSimulator, isSimulatorMode, onBLEData, BLEState } from './ble.js'
 import { wsConnect, wsDisconnect, wsOn, wsOff, wsSwitchVIN, wsIsConnected } from './websocket.js'
 
-// 需要在遥测流中“持久化”的字段（增量推送，且过期后不需要被擦除的字段，如挡位、充电状态）
+// 需要在遥测流中"持久化"的字段（增量推送，且过期后不需要被擦除的字段）
+// 这些字段会同时写入 state 层，确保遥测过期后仍保留在 data 中
 const PERSISTENT_TELEMETRY_FIELDS = new Set([
-  'gear', 'charge_state', 'charging_state',
-  'latitude', 'longitude', 'heading',
-  // 电池包数据（遥测推送但需持久化）
-  'soc', 'battery_level', 'pack_voltage', 'pack_current', 'energy_remaining',
+  // 驾驶状态
+  'gear', 'latitude', 'longitude', 'heading',
+  // 电池核心
+  'soc', 'battery_level', 'usable_soc', 'range_km', 'battery_temp',
+  'energy_remaining', 'odometer_km', 'rated_range_km',
+  // 充电状态
+  'charge_state', 'charging_state', 'charge_power',
   'dc_charging_power', 'ac_charging_power', 'charge_amps', 'charger_voltage',
-  'fast_charger_present'
+  'fast_charger_present', 'fast_charger_type', 'supercharging',
+  'charge_limit_soc', 'charge_speed', 'added_energy', 'charge_energy_added',
+  'minutes_to_full', 'time_to_full_charge', 'charger_phases',
+  'charge_port_door_open', 'charge_port_latch', 'charge_port_open',
+  'charge_current_request', 'charge_current_request_max',
+  'dc_charging_energy_in', 'ac_charging_energy_in',
+  'charge_port_cold_weather_mode', 'charge_enable_request',
+  // 电池健康
+  'module_temp_max', 'module_temp_min', 'num_module_temp_max', 'num_module_temp_min',
+  'brick_voltage_max', 'brick_voltage_min', 'num_brick_voltage_max', 'num_brick_voltage_min',
+  'battery_heater_on', 'bms_state', 'bms_full_charge_complete',
+  'dcdc_enable', 'isolation_resistance',
+  'lifetime_energy_used', 'preconditioning_enabled',
+  'pack_voltage', 'pack_current',
+  // 温控
+  'inside_temp', 'outside_temp',
+  'driver_temp_setting', 'passenger_temp_setting', 'hvac_fan_speed',
+  'steering_wheel_heater', 'is_ac_on', 'is_climate_on',
+  // 车辆状态
+  'locked', 'sentry_mode', 'voltage', 'ampere'
 ])
 
 const vehicleStore = reactive({
@@ -85,14 +108,48 @@ function mergeRealtime(partial) {
   vehicleStore.realtimeUpdatedAt = Date.now()
 
   const mapping = {
+    // 驾驶
     speed: 'speed', gear: 'gear', power: 'power', pedal_position: 'pedal_position',
     brake_pedal: 'brake_pedal', drive_rail: 'drive_rail', cruise_set_speed: 'cruise_set_speed',
     lateral_acceleration: 'lateral_acceleration', longitudinal_acceleration: 'longitudinal_acceleration',
     latitude: 'latitude', longitude: 'longitude', heading: 'heading', gps_state: 'gps_state',
-    soc: 'soc', battery_level: 'battery_level', dc_charging_power: 'dc_charging_power',
-    ac_charging_power: 'ac_charging_power', pack_voltage: 'pack_voltage', pack_current: 'pack_current',
-    energy_remaining: 'energy_remaining', charge_amps: 'charge_amps', charger_voltage: 'charger_voltage',
-    charge_state: 'charge_state', fast_charger_present: 'fast_charger_present'
+    // 电池核心
+    soc: 'soc', battery_level: 'battery_level', usable_soc: 'usable_soc',
+    range_km: 'range_km', battery_temp: 'battery_temp', energy_remaining: 'energy_remaining',
+    odometer_km: 'odometer_km', rated_range_km: 'rated_range_km',
+    // 充电
+    dc_charging_power: 'dc_charging_power', ac_charging_power: 'ac_charging_power',
+    pack_voltage: 'pack_voltage', pack_current: 'pack_current',
+    charge_amps: 'charge_amps', charger_voltage: 'charger_voltage',
+    charge_state: 'charge_state', fast_charger_present: 'fast_charger_present',
+    fast_charger_type: 'fast_charger_type', supercharging: 'supercharging',
+    charge_limit_soc: 'charge_limit_soc', charge_speed: 'charge_speed',
+    added_energy: 'added_energy', charge_energy_added: 'charge_energy_added',
+    minutes_to_full: 'minutes_to_full', time_to_full_charge: 'time_to_full_charge',
+    charger_phases: 'charger_phases',
+    charge_port_door_open: 'charge_port_door_open', charge_port_latch: 'charge_port_latch',
+    charge_port_open: 'charge_port_open',
+    charge_current_request: 'charge_current_request', charge_current_request_max: 'charge_current_request_max',
+    dc_charging_energy_in: 'dc_charging_energy_in', ac_charging_energy_in: 'ac_charging_energy_in',
+    charge_port_cold_weather_mode: 'charge_port_cold_weather_mode',
+    charge_enable_request: 'charge_enable_request',
+    // 电池健康
+    module_temp_max: 'module_temp_max', module_temp_min: 'module_temp_min',
+    num_module_temp_max: 'num_module_temp_max', num_module_temp_min: 'num_module_temp_min',
+    brick_voltage_max: 'brick_voltage_max', brick_voltage_min: 'brick_voltage_min',
+    num_brick_voltage_max: 'num_brick_voltage_max', num_brick_voltage_min: 'num_brick_voltage_min',
+    battery_heater_on: 'battery_heater_on', bms_state: 'bms_state',
+    bms_full_charge_complete: 'bms_full_charge_complete',
+    dcdc_enable: 'dcdc_enable', isolation_resistance: 'isolation_resistance',
+    lifetime_energy_used: 'lifetime_energy_used', preconditioning_enabled: 'preconditioning_enabled',
+    // 温控
+    inside_temp: 'inside_temp', outside_temp: 'outside_temp',
+    driver_temp_setting: 'driver_temp_setting', passenger_temp_setting: 'passenger_temp_setting',
+    hvac_fan_speed: 'hvac_fan_speed', steering_wheel_heater: 'steering_wheel_heater',
+    is_ac_on: 'is_ac_on', is_climate_on: 'is_climate_on',
+    // 车辆状态
+    locked: 'locked', sentry_mode: 'sentry_mode',
+    voltage: 'voltage', ampere: 'ampere'
   }
 
   for (const [srcKey, dstKey] of Object.entries(mapping)) {
