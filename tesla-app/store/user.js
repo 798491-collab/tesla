@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login, getUserInfo, refreshToken as refreshTokenApi } from '@/api/user.js'
+import { destroyGlobalWS } from '@/utils/vehicle-data'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(uni.getStorageSync('token') || '')
@@ -21,7 +22,8 @@ export const useUserStore = defineStore('user', () => {
   const isTokenExpiringSoon = computed(() => {
     if (!token.value || !expiresAt.value) return false
     const remaining = expiresAt.value - Date.now() / 1000
-    return remaining > 0 && remaining < 300
+    // 提前1小时刷新（access token有效期7天，5分钟太短）
+    return remaining > 0 && remaining < 3600
   })
 
   const setToken = (newToken, newRefreshToken, newExpiresAt) => {
@@ -88,6 +90,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const logout = () => {
+    destroyGlobalWS()
     clearAuth()
   }
 

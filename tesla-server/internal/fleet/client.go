@@ -319,7 +319,7 @@ type VehicleStateData struct {
 	SeatHeaterRearCenter int   `json:"seat_heater_rear_center"`
 	SteeringWheelHeater bool   `json:"steering_wheel_heater"`
 	DefrostMode        int     `json:"defrost_mode"`
-	HvacPower          float64 `json:"hvac_power"`
+	HvacPower          bool    `json:"hvac_power"`
 	HvacACEnabled      bool    `json:"hvac_ac_enabled"`
 	HvacAutoMode       bool    `json:"hvac_auto_mode"`
 	HvacFanSpeed       int     `json:"hvac_fan_speed"`
@@ -601,7 +601,7 @@ func ExtractStateFromSimple(data *SimpleVehicleData) map[string]interface{} {
 	if data.PassengerTempSetting != 0 {
 		m["passenger_temp_setting"] = data.PassengerTempSetting
 	}
-	if data.HvacPower != 0 {
+	if data.HvacPower {
 		m["hvac_power"] = data.HvacPower
 	}
 	if data.HvacAutoMode {
@@ -952,7 +952,7 @@ type SimpleVehicleData struct {
 	SeatHeaterRearCenter int    `json:"seat_heater_rear_center"`
 	SteeringWheelHeater bool    `json:"steering_wheel_heater"`
 	DefrostMode         int     `json:"defrost_mode"`
-	HvacPower           float64 `json:"hvac_power,omitempty"`
+	HvacPower           bool    `json:"hvac_power,omitempty"`
 	HvacACEnabled       bool    `json:"hvac_ac_enabled"`
 	HvacAutoMode        bool    `json:"hvac_auto_mode"`
 	HvacFanSpeed        int     `json:"hvac_fan_speed"`
@@ -1411,7 +1411,7 @@ func GetVehicleState(accessToken, vehicleTag string) (*SimpleVehicleData, error)
 		SeatHeaterRearCenter: data.Response.ClimateState.SeatHeaterRearCenter,
 		SteeringWheelHeater: data.Response.ClimateState.SteeringWheelHeat,
 		DefrostMode:         int(data.Response.ClimateState.DefrostMode),
-		HvacPower:           deriveHvacPower(data.Response.ClimateState),
+		HvacPower:           data.Response.ClimateState.IsClimateOn,
 		HvacACEnabled:       data.Response.ClimateState.IsAirConditioningOn,
 		HvacAutoMode:        data.Response.ClimateState.AutoConditioningEnabled,
 		HvacFanSpeed:        data.Response.ClimateState.FanStatus,

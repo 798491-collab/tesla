@@ -131,8 +131,8 @@ func Load() *Config {
 		},
 		JWT: JWTConfig{
 			Secret:           getEnv("JWT_SECRET", "your-secret-key"),
-			ExpiresIn:        getEnvAsInt("JWT_EXPIRES_IN", 7200),
-			RefreshExpiresIn: getEnvAsInt("JWT_REFRESH_EXPIRES_IN", 2592000),
+			ExpiresIn:        getEnvAsInt("JWT_EXPIRES_IN", 604800),      // 7天
+			RefreshExpiresIn: getEnvAsInt("JWT_REFRESH_EXPIRES_IN", 2592000), // 30天
 		},
 		Map: MapConfig{
 			TencentKey: getEnv("TENCENT_MAP_KEY", ""),

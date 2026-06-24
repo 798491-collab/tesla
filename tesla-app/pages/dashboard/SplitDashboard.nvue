@@ -305,6 +305,15 @@ const mediaProgressPercent = computed(() => {
 })
 
 // 地图定位与目的地
+// Haversine 距离公式，返回两点间距离（公里）
+function haversineKm(lat1, lng1, lat2, lng2) {
+	const R = 6371
+	const toRad = (d) => d * Math.PI / 180
+	const dLat = toRad(lat2 - lat1)
+	const dLng = toRad(lng2 - lng1)
+	const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+	return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 const navLat = computed(() => vehicleData.value?.latitude || 31.2304)
 const navLng = computed(() => vehicleData.value?.longitude || 121.4737)
 const navHeading = computed(() => Math.round(vehicleData.value?.heading || 0))
@@ -312,7 +321,15 @@ const navHeading = computed(() => Math.round(vehicleData.value?.heading || 0))
 const hasDestination = computed(() => {
 	const lat = vehicleData.value?.destination_latitude
 	const lng = vehicleData.value?.destination_longitude
-	return !!(lat && lng && lat !== 0 && lng !== 0)
+	if (!lat || !lng || lat === 0 || lng === 0) return false
+	// 起终点距离过近（<200米）视为无目的地，防止残留坐标触发自动导航
+	const curLat = vehicleData.value?.latitude
+	const curLng = vehicleData.value?.longitude
+	if (curLat && curLng) {
+		const dist = haversineKm(curLat, curLng, lat, lng)
+		if (dist < 0.2) return false
+	}
+	return true
 })
 const destinationLat = computed(() => vehicleData.value?.destination_latitude || 0)
 const destinationLng = computed(() => vehicleData.value?.destination_longitude || 0)

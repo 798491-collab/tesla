@@ -34,6 +34,7 @@ const PERSISTENT_TELEMETRY_FIELDS = new Set([
   'steering_wheel_heater', 'is_ac_on', 'is_climate_on',
   // 车辆状态
   'locked', 'sentry_mode', 'voltage', 'ampere',
+  'fd_window', 'fp_window', 'rd_window', 'rp_window', 'windows_open',
   // 媒体
   'media_playback_status', 'media_audio_source', 'media_volume',
   'now_playing_title', 'now_playing_artist', 'now_playing_album',
@@ -63,6 +64,7 @@ const vehicleStore = reactive({
 
 let bleUnsubscribe = null
 let realtimeExpiryTimer = null
+let isFetchingState = false
 
 // 优化：使用节流/时间戳比对思想，避免高频创建销毁定时器
 function scheduleRealtimeExpiry() {
@@ -108,10 +110,26 @@ export function initVehicleData(vin) {
 }
 
 export function destroyVehicleData() {
+  // 不断开WS连接，保持全局WS连接，避免页面切换时数据丢失
+  // 只清理定时器和BLE资源
+  if (realtimeExpiryTimer) { clearTimeout(realtimeExpiryTimer); realtimeExpiryTimer = null }
+  if (bleUnsubscribe) { bleUnsubscribe(); bleUnsubscribe = null }
+  stopSimulator()
+}
+
+// 完全销毁WS连接（仅在退出登录或切换用户时调用）
+export function destroyGlobalWS() {
   stopWSStream()
   if (realtimeExpiryTimer) { clearTimeout(realtimeExpiryTimer); realtimeExpiryTimer = null }
   if (bleUnsubscribe) { bleUnsubscribe(); bleUnsubscribe = null }
   stopSimulator()
+  // 清空所有数据
+  vehicleStore.realtime = {}
+  vehicleStore.state = {}
+  vehicleStore.data = {}
+  vehicleStore.realtimeUpdatedAt = 0
+  vehicleStore.stateOutput = null
+  vehicleStore.vin = ''
 }
 
 export function suspendVehicleData() {
@@ -166,6 +184,9 @@ function mergeRealtime(partial) {
     // 车辆状态
     locked: 'locked', sentry_mode: 'sentry_mode',
     voltage: 'voltage', ampere: 'ampere',
+    fd_window: 'fd_window', fp_window: 'fp_window',
+    rd_window: 'rd_window', rp_window: 'rp_window',
+    windows_open: 'windows_open',
     // 媒体
     media_playback_status: 'media_playback_status', media_audio_source: 'media_audio_source',
     media_volume: 'media_volume',
@@ -197,6 +218,18 @@ function mergeRealtime(partial) {
     vehicleStore.realtime.charge_power = Math.round((dc + ac) * 10) / 10
   }
 
+  // 计算车窗是否打开（遥测只推送 fd_window/fp_window/rd_window/rp_window，不推送 windows_open）
+  if (partial.fd_window !== undefined || partial.fp_window !== undefined ||
+      partial.rd_window !== undefined || partial.rp_window !== undefined) {
+    const fd = partial.fd_window !== undefined ? partial.fd_window : (vehicleStore.realtime.fd_window || false)
+    const fp = partial.fp_window !== undefined ? partial.fp_window : (vehicleStore.realtime.fp_window || false)
+    const rd = partial.rd_window !== undefined ? partial.rd_window : (vehicleStore.realtime.rd_window || false)
+    const rp = partial.rp_window !== undefined ? partial.rp_window : (vehicleStore.realtime.rp_window || false)
+    const anyOpen = !!(fd || fp || rd || rp)
+    vehicleStore.realtime.windows_open = anyOpen
+    vehicleStore.state.windows_open = anyOpen
+  }
+
   if (partial.state_output) {
     vehicleStore.stateOutput = partial.state_output
   }
@@ -205,9 +238,25 @@ function mergeRealtime(partial) {
   scheduleRealtimeExpiry()
 }
 
+// 允许0值覆盖的字段（0表示"无目的地"/"无导航"等合法语义）
+const ALLOW_ZERO_OVERWRITE_FIELDS = new Set([
+  'destination_latitude', 'destination_longitude',
+  'origin_latitude', 'origin_longitude',
+])
+
 function mergeState(partial) {
   if (!partial || typeof partial !== 'object') return
-  if (partial.state_output) vehicleStore.stateOutput = partial.state_output
+  if (partial.state_output) {
+    // 防止 state_output.charge.battery_level 为0时覆盖已有正确值
+    // 后端 buildOutputLightweight 在车辆睡眠时可能写入0值
+    // 优先用 partial.soc（本次数据自带的 soc），其次用 store 中已有的 soc
+    const incomingBL = partial.state_output?.charge?.battery_level
+    const effectiveSoc = partial.soc > 0 ? partial.soc : (vehicleStore.state.soc > 0 ? vehicleStore.state.soc : 0)
+    if (incomingBL === 0 && effectiveSoc > 0) {
+      partial.state_output.charge.battery_level = effectiveSoc
+    }
+    vehicleStore.stateOutput = partial.state_output
+  }
 
   for (const [key, value] of Object.entries(partial)) {
     if (key === 'state_output') continue
@@ -216,12 +265,13 @@ function mergeState(partial) {
     // - 空字符串：不覆盖已有非空字符串
     // - 数值0：不覆盖已有非零数值（0可能是Fleet API未初始化的占位值）
     // - 布尔值 false：是合法值，必须保留（如 locked=false）
+    // - 例外：destination_* 等字段允许0值覆盖（0=无目的地）
     if (value === undefined || value === null) continue
     if (typeof value === 'string' && value === '') {
       const existing = vehicleStore.state[key]
       if (existing !== undefined && existing !== null && existing !== '') continue
     }
-    if (typeof value === 'number' && value === 0) {
+    if (typeof value === 'number' && value === 0 && !ALLOW_ZERO_OVERWRITE_FIELDS.has(key)) {
       const existing = vehicleStore.state[key]
       if (existing !== undefined && existing !== null && existing !== 0) continue
     }
@@ -299,6 +349,8 @@ function rebuildMergedData() {
 
 async function fetchInitialState(vin) {
   if (!vin) return
+  if (isFetchingState) return
+  isFetchingState = true
   vehicleStore.loading = true
   try {
     const res = await getVehicleState(vin)
@@ -312,6 +364,7 @@ async function fetchInitialState(vin) {
     vehicleStore.error = err.message
   } finally {
     vehicleStore.loading = false
+    isFetchingState = false
   }
 }
 
@@ -349,6 +402,7 @@ function stopWSStream() {
 
 function onWSRealtimeUpdate(data) {
   if (vehicleStore.source === 'ble') return
+  console.log('[WS] realtime_update received, keys=', data ? Object.keys(data).length : 0)
   mergeRealtime(data)
   vehicleStore.realtimeSource = 'telemetry'
   vehicleStore.source = 'ws'
@@ -356,27 +410,56 @@ function onWSRealtimeUpdate(data) {
 
 function onWSStateUpdate(data) {
   if (vehicleStore.source === 'ble') return
+  console.log('[WS] state_update received, keys=', data ? Object.keys(data).length : 0)
   mergeState(data)
   if (vehicleStore.realtimeSource !== 'telemetry') vehicleStore.source = 'ws'
 }
 
 function onWSVehicleState(data) {
   if (vehicleStore.source === 'ble') return
+  console.log('[WS] vehicle_state received, soc=', data?.soc, 'keys=', data ? Object.keys(data).length : 0)
+  // 车辆睡眠/离线时，不覆盖媒体播放状态（保留"已停止"状态）
+  // pushInitialVehicleState 推送的缓存数据可能包含旧的"Playing"状态
+  if (vehicleStore.state.online_state === 'asleep' || vehicleStore.state.online_state === 'offline' || vehicleStore.state.online === false) {
+    if (data.media_playback_status) {
+      delete data.media_playback_status
+    }
+  }
   mergeState(data)
   if (vehicleStore.source !== 'ble') vehicleStore.source = 'ws'
 }
 
 function onWSOnlineState(data) {
+  console.log('[WS] online_state received, state=', data.state, 'online=', data.online, 'currentSoc=', vehicleStore.state.soc)
   if (data.online !== undefined) vehicleStore.state.online = data.online
   if (data.state !== undefined) vehicleStore.state.online_state = data.state
   if (data.state_output) vehicleStore.stateOutput = data.state_output
+  // 同步更新 stateOutput 中的 online_state，确保前端状态显示正确
+  // BroadcastOnlineState 只推送 state/online，不包含 state_output
+  if (data.state !== undefined && vehicleStore.stateOutput) {
+    if (!vehicleStore.stateOutput.state) vehicleStore.stateOutput.state = {}
+    vehicleStore.stateOutput.state.online_state = data.state
+  }
+  // 车辆睡眠/离线时，媒体播放应停止（但保留歌曲信息缓存）
+  if (data.state === 'asleep' || data.state === 'offline' || data.online === false) {
+    if (vehicleStore.state.media_playback_status && vehicleStore.state.media_playback_status !== 'Stopped') {
+      vehicleStore.state.media_playback_status = 'Stopped'
+    }
+    // 清除 realtime 中的播放状态，防止过期遥测覆盖"已停止"
+    if (vehicleStore.realtime.media_playback_status) {
+      delete vehicleStore.realtime.media_playback_status
+    }
+  }
   if (vehicleStore.source !== 'ble') {
     rebuildMergedData()
     vehicleStore.source = 'ws'
   }
 }
 
-function onWSPollState(data) { if (data.poll_state) vehicleStore.pollState = data.poll_state }
+function onWSPollState(data) {
+  console.log('[WS] poll_state received, poll_state=', data.poll_state)
+  if (data.poll_state) vehicleStore.pollState = data.poll_state
+}
 
 function onWSCommandState(data) {
   if (data.command_state) vehicleStore.commandState = data.command_state

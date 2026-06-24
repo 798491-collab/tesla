@@ -168,6 +168,7 @@ func getVehicleState(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
 		return
 	}
+	log.Printf("[getVehicleState] polling.GetVehicleState failed for %s: %v", vin, err)
 
 	var v models.TeslaVehicle
 	onlineState := "unknown"

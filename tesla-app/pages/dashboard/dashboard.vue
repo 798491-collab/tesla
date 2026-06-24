@@ -413,11 +413,9 @@
                 mapCtx.setMapStyle({
                     styleId: darkStyleId,
                     success: () => {
-                        console.log('[Dashboard] 地图墨渊主题设置成功')
                         isStyleSet = true
                     },
                     fail: (err) => {
-                        console.warn('[Dashboard] 地图主题设置失败，尝试整数参数:', err)
                         try {
                             mapCtx.setMapStyle(parseInt(darkStyleId) || 2)
                             isStyleSet = true
@@ -529,16 +527,26 @@
     const isMediaPlaying = computed(() => mediaPlaybackStatus.value === 'Playing')
     const mediaSourceLabel = computed(() => {
         const sourceMap = {
-            Radio: '收音机', FM: '收音机', AM: '收音机',
-            Bluetooth: '蓝牙', BT: '蓝牙',
-            Streaming: '流媒体', Slacker: '流媒体',
+            // 收音机
+            Radio: '收音机', FM: '收音机', AM: '收音机', XM: 'SiriusXM', SiriusXM: 'SiriusXM',
+            // 蓝牙
+            Bluetooth: '蓝牙', BT: '蓝牙', A2DP: '蓝牙',
+            // 流媒体（国际）
+            Streaming: '流媒体', Slacker: '流媒体', WebRadio: '网络电台',
             Spotify: 'Spotify', AppleMusic: 'Apple Music', 'Apple Music': 'Apple Music',
-            TuneIn: 'TuneIn', Tidal: 'Tidal', TIDAL: 'TIDAL',
+            TuneIn: 'TuneIn', Tidal: 'Tidal', TIDAL: 'Tidal',
+            // 中国区媒体源
+            'NetEase Cloud Music': '网易云音乐', NetEaseMusicWeb: '网易云音乐', NetEaseMusic: '网易云音乐', NetEaseCloudMusic: '网易云音乐',
+            QQMusic: 'QQ音乐', 'QQ Music': 'QQ音乐',
+            KuGouMusic: '酷狗音乐', 'KuGou Music': '酷狗音乐', KugouMusic: '酷狗音乐',
+            KuWoMusic: '酷我音乐', 'KuWo Music': '酷我音乐',
+            Ximalaya: '喜马拉雅', XimalayaFM: '喜马拉雅', 'Ximalaya FM': '喜马拉雅',
+            MiguMusic: '咪咕音乐', 'Migu Music': '咪咕音乐',
+            // 其他
             Caraoke: '卡拉OK',
             USB: 'USB', 'USB Drive': 'USB',
-            // 中国区常见媒体源
-            'NetEase Cloud Music': '网易云音乐', 'NetEaseMusicWeb': '网易云音乐', 'QQ Music': 'QQ音乐',
-            'KuGou Music': '酷狗音乐',
+            iPod: 'iPod', AUX: 'AUX', CD: 'CD', DVD: 'DVD',
+            Podcasts: '播客', Audiobooks: '有声书',
         }
         return sourceMap[mediaAudioSource.value] || mediaAudioSource.value || '未知'
     })
@@ -722,7 +730,6 @@
 
     function onModelLoaded() {
         modelLoaded.value = true
-        console.log('[Dashboard] 3D scene ready')
     }
 
     // 传递给 renderjs 的 state 对象
@@ -916,7 +923,6 @@
     }
 
     function onSceneReady() {
-        console.log('[Dashboard] 3D scene ready (legacy)')
     }
 
     // 调试控制

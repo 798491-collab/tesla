@@ -155,6 +155,9 @@ func GetVehicleStateFromRedis(vin string) (*fleet.SimpleVehicleData, error) {
 			AutosteerState:     state.AutosteerState,
 			CruiseControlState: state.CruiseControlState,
 		})
+	} else if state.Soc > 0 {
+		// 同步 state_output 中的 battery_level，防止睡眠时 buildOutputLightweight 写入0值
+		state.StateOutput.Charge.BatteryLevel = state.Soc
 	}
 	return &state, nil
 }

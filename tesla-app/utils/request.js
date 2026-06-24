@@ -111,7 +111,8 @@ const request = (options) => {
         })
     }
 
-    if (token && expiresAt && Date.now() / 1000 > expiresAt - 300) {
+    if (token && expiresAt && Date.now() / 1000 > expiresAt - 3600) {
+      // 提前1小时刷新token（access token有效期7天）
       if (isRefreshing) {
         subscribeTokenRefresh((newToken) => {
           doRequest(newToken)
