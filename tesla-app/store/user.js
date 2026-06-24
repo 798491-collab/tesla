@@ -91,6 +91,12 @@ export const useUserStore = defineStore('user', () => {
     clearAuth()
   }
 
+  const canRefresh = computed(() => {
+    return !token.value || (expiresAt.value && Date.now() / 1000 > expiresAt.value)
+      ? !!refreshToken.value
+      : false
+  })
+
   const checkTokenExpiry = () => {
     if (!token.value) return false
     if (expiresAt.value && Date.now() / 1000 > expiresAt.value) {
@@ -108,6 +114,7 @@ export const useUserStore = defineStore('user', () => {
     savedUsername,
     isLoggedIn,
     isTokenExpiringSoon,
+    canRefresh,
     setToken,
     setUserInfo,
     setCurrentVehicle,

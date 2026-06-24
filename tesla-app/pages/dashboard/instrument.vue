@@ -129,7 +129,7 @@ import { ref, computed, onMounted, onUnmounted, watch, getCurrentInstance } from
 import { onShow, onHide } from '@dcloudio/uni-app'
 import Icon from '@/components/Icon/Icon.vue'
 import { useVehicleStore } from '@/store/vehicle'
-import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
+import { useVehicleData, initVehicleData, destroyVehicleData, suspendVehicleData } from '@/utils/vehicle-data'
 import { useThemeStore } from '@/store/theme'
 import { getChargeType } from '@/utils/vehicle-state'
 
@@ -317,7 +317,7 @@ onHide(() => {
   try { plus.navigator.setFullscreen(false) } catch (e) {}
   try { plus.navigator.showSystemNavigation() } catch (e) {}
   // #endif
-  destroyVehicleData()
+  suspendVehicleData()
 })
 
 watch(() => currentVehicle.value, (newVal) => {

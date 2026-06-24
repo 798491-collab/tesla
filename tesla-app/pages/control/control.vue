@@ -316,7 +316,7 @@ import {
 import Icon from '@/components/Icon/Icon.vue'
 import { useThemeStore } from '@/store/theme'
 import { useVehicleStore } from '@/store/vehicle'
-import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
+import { useVehicleData, initVehicleData, destroyVehicleData, suspendVehicleData } from '@/utils/vehicle-data'
 import { getDisplayStateLabel, getDisplayStateColor, canControlVehicle, isVehicleOnline, isVehicleCharging } from '@/utils/vehicle-state'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
@@ -381,7 +381,7 @@ onShow(() => {
 })
 
 onHide(() => {
-  destroyVehicleData()
+  suspendVehicleData()
 })
 
 onUnmounted(() => {

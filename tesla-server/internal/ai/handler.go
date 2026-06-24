@@ -726,16 +726,16 @@ func buildVehicleDailyPrompt(vin, date string) (string, error) {
 	nextDay := parsedDate.AddDate(0, 0, 1)
 
 	type VehicleStateCache struct {
-		BatteryLevel   float64 `json:"battery_level"`
+		BatteryLevel   float64 `json:"soc"`
 		ChargingState  string  `json:"charging_state"`
-		ChargerPower   float64 `json:"charger_power"`
+		ChargerPower   float64 `json:"charge_power"`
 		Speed          float64 `json:"speed"`
 		InsideTemp     float64 `json:"inside_temp"`
 		OutsideTemp    float64 `json:"outside_temp"`
-		TirePressureFL float64 `json:"tire_pressure_fl"`
-		TirePressureFR float64 `json:"tire_pressure_fr"`
-		TirePressureRL float64 `json:"tire_pressure_rl"`
-		TirePressureRR float64 `json:"tire_pressure_rr"`
+		TirePressureFL float64 `json:"tpms_fl"`
+		TirePressureFR float64 `json:"tpms_fr"`
+		TirePressureRL float64 `json:"tpms_rl"`
+		TirePressureRR float64 `json:"tpms_rr"`
 		OdometerKm     float64 `json:"odometer_km"`
 		Locked         bool    `json:"locked"`
 		SentryMode     bool    `json:"sentry_mode"`

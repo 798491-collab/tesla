@@ -332,7 +332,8 @@
     import {
         useVehicleData,
         initVehicleData,
-        destroyVehicleData
+        destroyVehicleData,
+        suspendVehicleData
     } from '@/utils/vehicle-data'
     import {
         getDisplayStateLabel,
@@ -436,7 +437,10 @@
     const currentVehicle = computed(() => vehicleStore.currentVehicle)
     const vehicleData = computed(() => vehicleDataStore.data)
     const stateOutput = computed(() => vehicleDataStore.stateOutput)
-    const batteryPercent = computed(() => vehicleData.value?.soc || 0)
+    const batteryPercent = computed(() => {
+        const soc = vehicleData.value?.soc || 0
+        return Math.round(soc * 10) / 10
+    })
     const rangeKm = computed(() => {
         const range = vehicleData.value?.range_km || 0
         return typeof range === 'number' ? range.toFixed(1) : range
@@ -985,7 +989,7 @@
     })
 
     onHide(() => {
-        destroyVehicleData()
+        suspendVehicleData()
     })
 
     onUnmounted(() => {

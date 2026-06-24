@@ -83,8 +83,16 @@
               <text class="stat-text">{{ log.avg_speed?.toFixed(1) }} km/h</text>
             </view>
             <view class="stat-item">
+              <Icon name="TimeOutline" :size="14" themeColor="hint" />
+              <text class="stat-text">{{ formatDuration(log.drive_duration) }}</text>
+            </view>
+            <view class="stat-item">
               <Icon name="BatteryCharging" :size="14" themeColor="hint" />
-              <text class="stat-text">{{ log.avg_consumption?.toFixed(1) || '--' }} kWh</text>
+              <text class="stat-text">{{ log.energy_used?.toFixed(1) || '--' }} kWh</text>
+            </view>
+            <view class="stat-item" v-if="log.electricity_cost != null">
+              <Icon name="Wallet" :size="14" themeColor="hint" />
+              <text class="stat-text cost-text">¥{{ log.electricity_cost.toFixed(2) }}</text>
             </view>
           </view>
         </view>
@@ -163,6 +171,14 @@ const formatDate = (dateStr) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+const formatDuration = (seconds) => {
+  if (!seconds || seconds <= 0) return '--'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h${m > 0 ? m + 'min' : ''}`
+  return `${m}min`
 }
 
 const formatCoord = (lat, lng) => {
@@ -484,6 +500,11 @@ const formatAITime = (t) => {
       font-size: 24rpx;
       color: var(--dark-page-text-secondary);
       font-weight: 500;
+
+      &.cost-text {
+        color: #f59e0b;
+        font-weight: 600;
+      }
     }
   }
 }

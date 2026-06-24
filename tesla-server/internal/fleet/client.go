@@ -882,25 +882,25 @@ type SimpleVehicleData struct {
 	State     string    `json:"state"`
 	Driving   bool      `json:"driving"`
 	Charging  bool      `json:"charging"`
-	Soc       int       `json:"soc"`
-	UsableSoc int       `json:"usable_soc"`
-	RangeKm   float64   `json:"range_km"`
-	OdometerKm        float64 `json:"odometer_km"`
-	ChargingState     string  `json:"charging_state"`
-	ChargeSpeed       float64 `json:"charge_speed"`
-	ChargePower       float64 `json:"charge_power"`
-	Ampere            float64 `json:"ampere"`
-	Voltage           int     `json:"voltage"`
-	AddedEnergy       float64 `json:"added_energy"`
-	MinutesToFull     int     `json:"minutes_to_full"`
+	Soc       int       `json:"soc,omitempty"`
+	UsableSoc int       `json:"usable_soc,omitempty"`
+	RangeKm   float64   `json:"range_km,omitempty"`
+	OdometerKm        float64 `json:"odometer_km,omitempty"`
+	ChargingState     string  `json:"charging_state,omitempty"`
+	ChargeSpeed       float64 `json:"charge_speed,omitempty"`
+	ChargePower       float64 `json:"charge_power,omitempty"`
+	Ampere            float64 `json:"ampere,omitempty"`
+	Voltage           int     `json:"voltage,omitempty"`
+	AddedEnergy       float64 `json:"added_energy,omitempty"`
+	MinutesToFull     int     `json:"minutes_to_full,omitempty"`
 	ChargeLimitSoc    int     `json:"charge_limit_soc"`
 	Supercharging     bool    `json:"supercharging"`
-	Gear     string  `json:"gear"`
-	Speed    float64 `json:"speed"`
-	Power    float64 `json:"power"`
-	Heading  int     `json:"heading"`
-	Latitude float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
+	Gear     string  `json:"gear,omitempty"`
+	Speed    float64 `json:"speed,omitempty"`
+	Power    float64 `json:"power,omitempty"`
+	Heading  int     `json:"heading,omitempty"`
+	Latitude float64 `json:"latitude,omitempty"`
+	Longitude float64 `json:"longitude,omitempty"`
 	Locked      bool `json:"locked"`
 	SentryMode  bool `json:"sentry_mode"`
 	MirrorFolded   bool    `json:"mirror_folded"`
@@ -909,7 +909,7 @@ type SimpleVehicleData struct {
 	TrunkOpen      bool    `json:"trunk_open"`
 	FrunkOpen      bool    `json:"frunk_open"`
 	ChargePortDoorOpen bool    `json:"charge_port_door_open"`
-	ChargePortLatch    string  `json:"charge_port_latch"`
+	ChargePortLatch    string  `json:"charge_port_latch,omitempty"`
 	DoorFL bool `json:"door_fl"`
 	DoorFR bool `json:"door_fr"`
 	DoorRL bool `json:"door_rl"`
@@ -918,32 +918,32 @@ type SimpleVehicleData struct {
 	FpWindow bool `json:"fp_window"`
 	RdWindow bool `json:"rd_window"`
 	RpWindow bool `json:"rp_window"`
-	InsideTemp  float64 `json:"inside_temp"`
-	OutsideTemp float64 `json:"outside_temp"`
-	DriverTempSetting    float64 `json:"driver_temp_setting"`
-	PassengerTempSetting float64 `json:"passenger_temp_setting"`
+	InsideTemp  float64 `json:"inside_temp,omitempty"`
+	OutsideTemp float64 `json:"outside_temp,omitempty"`
+	DriverTempSetting    float64 `json:"driver_temp_setting,omitempty"`
+	PassengerTempSetting float64 `json:"passenger_temp_setting,omitempty"`
 	IsACOn       bool  `json:"is_ac_on"`
 	IsClimateOn  bool  `json:"is_climate_on"`
-	Version      string `json:"version"`
-	TpmsFL float64 `json:"tpms_fl"`
-	TpmsFR float64 `json:"tpms_fr"`
-	TpmsRL float64 `json:"tpms_rl"`
-	TpmsRR float64 `json:"tpms_rr"`
-	BatteryTemp    float64 `json:"battery_temp"`
-	ChargerPhases  int     `json:"charger_phases"`
+	Version      string `json:"version,omitempty"`
+	TpmsFL float64 `json:"tpms_fl,omitempty"`
+	TpmsFR float64 `json:"tpms_fr,omitempty"`
+	TpmsRL float64 `json:"tpms_rl,omitempty"`
+	TpmsRR float64 `json:"tpms_rr,omitempty"`
+	BatteryTemp    float64 `json:"battery_temp,omitempty"`
+	ChargerPhases  int     `json:"charger_phases,omitempty"`
 	Lightweight    bool    `json:"lightweight"`
-	MediaPlaybackStatus     string `json:"media_playback_status"`
-	MediaAudioSource        string `json:"media_audio_source"`
-	MediaVolume             int    `json:"media_volume"`
-	MediaAudioVolumeIncrement int  `json:"media_audio_volume_increment"`
-	MediaAudioVolumeMax     int    `json:"media_audio_volume_max"`
-	NowPlayingTitle         string `json:"now_playing_title"`
-	NowPlayingArtist    string `json:"now_playing_artist"`
-	NowPlayingAlbum     string `json:"now_playing_album"`
-	NowPlayingStation   string `json:"now_playing_station"`
-	NowPlayingDuration  int    `json:"now_playing_duration"`
-	NowPlayingElapsed   int    `json:"now_playing_elapsed"`
-	CenterDisplayState  int    `json:"center_display_state"`
+	MediaPlaybackStatus     string `json:"media_playback_status,omitempty"`
+	MediaAudioSource        string `json:"media_audio_source,omitempty"`
+	MediaVolume             int    `json:"media_volume,omitempty"`
+	MediaAudioVolumeIncrement int  `json:"media_audio_volume_increment,omitempty"`
+	MediaAudioVolumeMax     int    `json:"media_audio_volume_max,omitempty"`
+	NowPlayingTitle         string `json:"now_playing_title,omitempty"`
+	NowPlayingArtist    string `json:"now_playing_artist,omitempty"`
+	NowPlayingAlbum     string `json:"now_playing_album,omitempty"`
+	NowPlayingStation   string `json:"now_playing_station,omitempty"`
+	NowPlayingDuration  int    `json:"now_playing_duration,omitempty"`
+	NowPlayingElapsed   int    `json:"now_playing_elapsed,omitempty"`
+	CenterDisplayState  int    `json:"center_display_state,omitempty"`
 	StateOutput    *state.VehicleStateOutput `json:"state_output,omitempty"`
 	SeatHeaterLeft      int     `json:"seat_heater_left"`
 	SeatHeaterRight     int     `json:"seat_heater_right"`
@@ -952,34 +952,34 @@ type SimpleVehicleData struct {
 	SeatHeaterRearCenter int    `json:"seat_heater_rear_center"`
 	SteeringWheelHeater bool    `json:"steering_wheel_heater"`
 	DefrostMode         int     `json:"defrost_mode"`
-	HvacPower           float64 `json:"hvac_power"`
+	HvacPower           float64 `json:"hvac_power,omitempty"`
 	HvacACEnabled       bool    `json:"hvac_ac_enabled"`
 	HvacAutoMode        bool    `json:"hvac_auto_mode"`
 	HvacFanSpeed        int     `json:"hvac_fan_speed"`
-	ClimateKeeperMode   int     `json:"climate_keeper_mode"`
-	ChargeEnergyAdded   float64 `json:"charge_energy_added"`
-	FastChargerType     string  `json:"fast_charger_type"`
+	ClimateKeeperMode   int     `json:"climate_keeper_mode,omitempty"`
+	ChargeEnergyAdded   float64 `json:"charge_energy_added,omitempty"`
+	FastChargerType     string  `json:"fast_charger_type,omitempty"`
 	BatteryHeaterOn     bool    `json:"battery_heater_on"`
-	CarType             string  `json:"car_type"`
-	ExteriorColor       string  `json:"exterior_color"`
+	CarType             string  `json:"car_type,omitempty"`
+	ExteriorColor       string  `json:"exterior_color,omitempty"`
 	LightsHighBeams     bool    `json:"lights_high_beams"`
 	LightsHazardsActive bool    `json:"lights_hazards_active"`
-	LightsTurnSignal    string  `json:"lights_turn_signal"`
+	LightsTurnSignal    string  `json:"lights_turn_signal,omitempty"`
 	BrakePedal          bool    `json:"brake_pedal"`
 	DriveRail           bool    `json:"drive_rail"`
-	PedalPosition       float64 `json:"pedal_position"`
+	PedalPosition       float64 `json:"pedal_position,omitempty"`
 	GuestModeEnabled    bool    `json:"guest_mode_enabled"`
 	ServiceMode         bool    `json:"service_mode"`
-	DestinationLatitude      float64 `json:"destination_latitude"`
-	DestinationLongitude     float64 `json:"destination_longitude"`
-	DestinationName          string  `json:"destination_name"`
-	MilesToArrival           float64 `json:"miles_to_arrival"`
-	MinutesToArrival         float64 `json:"minutes_to_arrival"`
-	CurrentLimitMph          float64 `json:"current_limit_mph"`
-	CruiseState              string  `json:"cruise_state"`
-	AutosteerState           string  `json:"autosteer_state"`
-	CruiseControlState       string  `json:"cruise_control_state"`
-	LaneKeepingState         string  `json:"lane_keeping_state"`
+	DestinationLatitude      float64 `json:"destination_latitude,omitempty"`
+	DestinationLongitude     float64 `json:"destination_longitude,omitempty"`
+	DestinationName          string  `json:"destination_name,omitempty"`
+	MilesToArrival           float64 `json:"miles_to_arrival,omitempty"`
+	MinutesToArrival         float64 `json:"minutes_to_arrival,omitempty"`
+	CurrentLimitMph          float64 `json:"current_limit_mph,omitempty"`
+	CruiseState              string  `json:"cruise_state,omitempty"`
+	AutosteerState           string  `json:"autosteer_state,omitempty"`
+	CruiseControlState       string  `json:"cruise_control_state,omitempty"`
+	LaneKeepingState         string  `json:"lane_keeping_state,omitempty"`
 
 	// 遥测扩展字段（Fleet API 不返回，由遥测写入 Redis，omitempty 防止 Fleet API 保存时覆盖遥测值）
 	RatedRangeKm            float64 `json:"rated_range_km,omitempty"`

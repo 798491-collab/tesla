@@ -146,7 +146,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, onActivated, getCurrentInstance } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import { useVehicleStore } from '@/store/vehicle'
-import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
+import { useVehicleData, initVehicleData, destroyVehicleData, suspendVehicleData } from '@/utils/vehicle-data'
 import { get } from '@/utils/request.js'
 import Icon from '@/components/Icon/Icon.vue'
 import NavBar from '@/components/NavBar/NavBar.vue'
@@ -358,7 +358,7 @@ onShow(() => {
 })
 
 onHide(() => {
-  destroyVehicleData()
+  suspendVehicleData()
 })
 
 const loadAuthStatus = () => {

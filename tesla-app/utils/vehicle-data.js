@@ -33,7 +33,11 @@ const PERSISTENT_TELEMETRY_FIELDS = new Set([
   'driver_temp_setting', 'passenger_temp_setting', 'hvac_fan_speed',
   'steering_wheel_heater', 'is_ac_on', 'is_climate_on',
   // 车辆状态
-  'locked', 'sentry_mode', 'voltage', 'ampere'
+  'locked', 'sentry_mode', 'voltage', 'ampere',
+  // 媒体
+  'media_playback_status', 'media_audio_source', 'media_volume',
+  'now_playing_title', 'now_playing_artist', 'now_playing_album',
+  'now_playing_station', 'now_playing_duration', 'now_playing_elapsed'
 ])
 
 const vehicleStore = reactive({
@@ -81,8 +85,20 @@ function scheduleRealtimeExpiry() {
 export function useVehicleData() { return vehicleStore }
 
 export function initVehicleData(vin) {
+  const prevVin = vehicleStore.vin
   vehicleStore.vin = vin
   if (vehicleStore.source === 'ble' && vehicleStore.bleConnected) return
+
+  // VIN 变化时，清空旧数据并重建（避免显示上一辆车的数据）
+  if (prevVin && prevVin !== vin) {
+    vehicleStore.realtime = {}
+    vehicleStore.state = {}
+    vehicleStore.data = {}
+    vehicleStore.realtimeUpdatedAt = 0
+    vehicleStore.stateOutput = null
+    if (realtimeExpiryTimer) { clearTimeout(realtimeExpiryTimer); realtimeExpiryTimer = null }
+  }
+
   if (wsIsConnected() && vehicleStore.vin === vin) {
     fetchInitialState(vin)
     return
@@ -149,7 +165,13 @@ function mergeRealtime(partial) {
     is_ac_on: 'is_ac_on', is_climate_on: 'is_climate_on',
     // 车辆状态
     locked: 'locked', sentry_mode: 'sentry_mode',
-    voltage: 'voltage', ampere: 'ampere'
+    voltage: 'voltage', ampere: 'ampere',
+    // 媒体
+    media_playback_status: 'media_playback_status', media_audio_source: 'media_audio_source',
+    media_volume: 'media_volume',
+    now_playing_title: 'now_playing_title', now_playing_artist: 'now_playing_artist',
+    now_playing_album: 'now_playing_album', now_playing_station: 'now_playing_station',
+    now_playing_duration: 'now_playing_duration', now_playing_elapsed: 'now_playing_elapsed'
   }
 
   for (const [srcKey, dstKey] of Object.entries(mapping)) {
@@ -186,11 +208,28 @@ function mergeRealtime(partial) {
 function mergeState(partial) {
   if (!partial || typeof partial !== 'object') return
   if (partial.state_output) vehicleStore.stateOutput = partial.state_output
-  
+
   for (const [key, value] of Object.entries(partial)) {
     if (key === 'state_output') continue
-    if (value !== undefined && value !== null) {
-      vehicleStore.state[key] = value
+    // 空值不覆盖已有数据
+    // - null/undefined：直接跳过
+    // - 空字符串：不覆盖已有非空字符串
+    // - 数值0：不覆盖已有非零数值（0可能是Fleet API未初始化的占位值）
+    // - 布尔值 false：是合法值，必须保留（如 locked=false）
+    if (value === undefined || value === null) continue
+    if (typeof value === 'string' && value === '') {
+      const existing = vehicleStore.state[key]
+      if (existing !== undefined && existing !== null && existing !== '') continue
+    }
+    if (typeof value === 'number' && value === 0) {
+      const existing = vehicleStore.state[key]
+      if (existing !== undefined && existing !== null && existing !== 0) continue
+    }
+    vehicleStore.state[key] = value
+    // 同步清除 realtime 层中对应字段的旧值，防止过期 realtime 覆盖新的 state 值
+    // 例如：state_update 推送 gear='P'，但 realtime.gear 还是旧的 'D'
+    if (vehicleStore.realtime[key] !== undefined && vehicleStore.realtime[key] !== value) {
+      delete vehicleStore.realtime[key]
     }
   }
   rebuildMergedData()

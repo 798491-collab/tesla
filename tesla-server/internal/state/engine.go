@@ -603,7 +603,7 @@ func buildOutputLightweight(e *stateHistory, apiState string, online bool) *Vehi
 		},
 		Charge: ChargeStateOutput{
 			ChargeState:  ChargeStateDisconnected,
-			BatteryLevel: 0,
+			BatteryLevel: e.lastSoc,
 		},
 		Command: CommandStateOutput{
 			CommandState: e.commandState,

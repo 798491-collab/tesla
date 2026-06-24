@@ -377,7 +377,41 @@ func GetTripLogs(vin string, limit int, startDate, endDate time.Time) ([]models.
 		q = q.Where("start_time >= ? AND start_time < ?", startDate, endDate)
 	}
 	err := q.Order("start_time DESC").Limit(limit).Find(&trips).Error
-	return trips, err
+	if err != nil {
+		return trips, err
+	}
+	// 为每条行程计算电费（基于行程开始前最近一次充电的电价）
+	fillTripElectricityCost(vin, trips)
+	return trips, nil
+}
+
+// fillTripElectricityCost 根据行程开始前最近一次充电记录的 price_per_kwh 计算行程电费
+func fillTripElectricityCost(vin string, trips []models.TripLog) {
+	if len(trips) == 0 {
+		return
+	}
+	// 查找该车辆所有有价格的充电记录，按时间升序
+	var chargings []models.ChargingLog
+	database.DB.Where("vin = ? AND price_per_kwh IS NOT NULL AND price_per_kwh > 0").
+		Order("start_time ASC").Find(&chargings)
+
+	for i := range trips {
+		if trips[i].EnergyUsed <= 0 {
+			continue
+		}
+		// 找到行程开始时间之前最近一次充电记录
+		var matchedPrice *float64
+		for j := len(chargings) - 1; j >= 0; j-- {
+			if chargings[j].StartTime.Before(trips[i].StartTime) {
+				matchedPrice = chargings[j].PricePerKwh
+				break
+			}
+		}
+		if matchedPrice != nil && *matchedPrice > 0 {
+			cost := *matchedPrice * trips[i].EnergyUsed
+			trips[i].ElectricityCost = &cost
+		}
+	}
 }
 
 func GetTripPoints(tripID uint64) ([]models.TripPoint, error) {
@@ -438,21 +472,28 @@ func GetTripStats(vin string, startDate, endDate time.Time) (map[string]interfac
 }
 
 type MonthlyStatsItem struct {
-	Month          string  `json:"month"`
-	TripCount      int     `json:"trip_count"`
-	TotalDistance   float64 `json:"total_distance"`
-	TotalEnergy    float64 `json:"total_energy"`
-	AvgConsumption float64 `json:"avg_consumption"`
+	Month           string   `json:"month"`
+	TripCount       int      `json:"trip_count"`
+	TotalDistance    float64  `json:"total_distance"`
+	TotalEnergy     float64  `json:"total_energy"`
+	AvgConsumption  float64  `json:"avg_consumption"`
+	TotalDuration   int      `json:"total_duration"`    // 总行驶时长（秒）
+	TotalCost       *float64 `json:"total_cost"`        // 总电费（元）
 }
 
 func GetMonthlyTripList(vin string) ([]MonthlyStatsItem, error) {
 	var trips []models.TripLog
 	err := database.DB.Where("vin = ?", vin).
-		Select("vin, start_time, distance, energy_used").
+		Select("vin, start_time, distance, energy_used, drive_duration, idle_duration").
 		Find(&trips).Error
 	if err != nil {
 		return nil, err
 	}
+
+	// 查找充电记录用于电费计算
+	var chargings []models.ChargingLog
+	database.DB.Where("vin = ? AND price_per_kwh IS NOT NULL AND price_per_kwh > 0").
+		Order("start_time ASC").Find(&chargings)
 
 	monthMap := make(map[string]*MonthlyStatsItem)
 	var monthOrder []string
@@ -467,6 +508,24 @@ func GetMonthlyTripList(vin string) ([]MonthlyStatsItem, error) {
 		m.TripCount++
 		m.TotalDistance += trip.Distance
 		m.TotalEnergy += trip.EnergyUsed
+		m.TotalDuration += trip.DriveDuration
+
+		// 计算单条行程电费并累加
+		if trip.EnergyUsed > 0 {
+			for j := len(chargings) - 1; j >= 0; j-- {
+				if chargings[j].StartTime.Before(trip.StartTime) {
+					if chargings[j].PricePerKwh != nil && *chargings[j].PricePerKwh > 0 {
+						cost := *chargings[j].PricePerKwh * trip.EnergyUsed
+						if m.TotalCost == nil {
+							m.TotalCost = &cost
+						} else {
+							*m.TotalCost += cost
+						}
+					}
+					break
+				}
+			}
+		}
 	}
 
 	for _, m := range monthMap {

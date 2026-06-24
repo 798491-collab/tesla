@@ -64,10 +64,24 @@
           </view>
           <view class="stat-item">
             <view class="stat-icon-wrap">
+              <Icon name="TimeOutline" :size="14" themeColor="primary" />
+            </view>
+            <text class="stat-value">{{ formatDuration(trip.drive_duration) }}</text>
+            <text class="stat-label">行驶时长</text>
+          </view>
+          <view class="stat-item">
+            <view class="stat-icon-wrap">
               <Icon name="BatteryCharging" :size="14" themeColor="primary" />
             </view>
             <text class="stat-value">{{ trip.energy_used?.toFixed(1) || '--' }}</text>
             <text class="stat-label">kWh 能耗</text>
+          </view>
+          <view class="stat-item" v-if="trip.electricity_cost != null">
+            <view class="stat-icon-wrap">
+              <Icon name="Wallet" :size="14" themeColor="primary" />
+            </view>
+            <text class="stat-value cost-value">¥{{ trip.electricity_cost.toFixed(2) }}</text>
+            <text class="stat-label">电费</text>
           </view>
           <view class="stat-item">
             <view class="stat-icon-wrap">
@@ -75,13 +89,6 @@
             </view>
             <text class="stat-value">{{ trip.start_battery_level || '--' }}→{{ trip.end_battery_level || '--' }}</text>
             <text class="stat-label">电量变化</text>
-          </view>
-          <view class="stat-item">
-            <view class="stat-icon-wrap">
-              <Icon name="Location" :size="14" themeColor="primary" />
-            </view>
-            <text class="stat-value">{{ points.length }}</text>
-            <text class="stat-label">轨迹点</text>
           </view>
         </view>
       </view>
@@ -335,6 +342,14 @@ const formatDate = (dateStr) => {
   return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+const formatDuration = (seconds) => {
+  if (!seconds || seconds <= 0) return '--'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h${m > 0 ? m + 'min' : ''}`
+  return `${m}min`
+}
+
 const formatTime = (dateStr) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
@@ -521,6 +536,10 @@ const formatAITime = (t) => {
     font-weight: 700;
     color: var(--text-primary);
     display: block;
+
+    &.cost-value {
+      color: #f59e0b;
+    }
   }
 
   .stat-label {

@@ -14,11 +14,24 @@ export default {
         userStore.logout()
         uni.reLaunch({ url: '/pages/login/login' })
       })
+    } else if (userStore.canRefresh) {
+      userStore.refreshTokenAction().then(() => {
+        userStore.fetchUserInfo().catch(() => {})
+      }).catch(() => {
+        userStore.logout()
+      })
     }
   },
   onShow: function() {
     console.log('App Show')
     uni.$emit('appShow')
+
+    const userStore = useUserStore()
+    if (!userStore.isLoggedIn && userStore.canRefresh) {
+      userStore.refreshTokenAction().catch(() => {
+        userStore.logout()
+      })
+    }
   },
   onHide: function() {
     console.log('App Hide')

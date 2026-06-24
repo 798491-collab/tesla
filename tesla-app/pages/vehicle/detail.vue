@@ -493,7 +493,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import { useVehicleStore } from '@/store/vehicle'
 import { useThemeStore } from '@/store/theme'
-import { useVehicleData, initVehicleData, destroyVehicleData } from '@/utils/vehicle-data'
+import { useVehicleData, initVehicleData, destroyVehicleData, suspendVehicleData } from '@/utils/vehicle-data'
 import { getDisplayStateLabel, getDisplayStateColor, getChargeType } from '@/utils/vehicle-state'
 import { getLatestAnalysis, triggerVehicleAnalysis } from '@/api/ai.js'
 import Icon from '@/components/Icon/Icon.vue'
@@ -646,7 +646,7 @@ onShow(() => {
 })
 
 onHide(() => {
-  destroyVehicleData()
+  suspendVehicleData()
 })
 
 onUnmounted(() => {

@@ -41,12 +41,16 @@
               <text class="stat-label">行程次数</text>
             </view>
             <view class="stat-item">
-              <text class="stat-value">{{ fmt(item.avg_consumption, 1) }}</text>
-              <text class="stat-label">百公里能耗(kWh)</text>
+              <text class="stat-value">{{ formatDuration(item.total_duration) }}</text>
+              <text class="stat-label">行驶时长</text>
             </view>
             <view class="stat-item">
               <text class="stat-value">{{ fmt(item.total_energy, 1) }}</text>
-              <text class="stat-label">总使用能耗(kWh)</text>
+              <text class="stat-label">总能耗(kWh)</text>
+            </view>
+            <view class="stat-item" v-if="item.total_cost != null">
+              <text class="stat-value cost-value">¥{{ fmt(item.total_cost, 2) }}</text>
+              <text class="stat-label">电费(元)</text>
             </view>
           </view>
           <view class="month-ai-row" v-if="monthAiSummaries[item.month]" @click.stop="goMonthDetail(item.month)">
@@ -113,6 +117,14 @@ onMounted(() => {
 const fmt = (val, digits) => {
   if (val === undefined || val === null || isNaN(val)) return '0'
   return Number(val).toFixed(digits)
+}
+
+const formatDuration = (seconds) => {
+  if (!seconds || seconds <= 0) return '0min'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h${m > 0 ? m + 'min' : ''}`
+  return `${m}min`
 }
 
 const formatMonth = (month) => {
@@ -310,6 +322,10 @@ const goMonthDetail = (month) => {
     font-weight: 800;
     color: var(--color-primary);
     display: block;
+
+    &.cost-value {
+      color: #f59e0b;
+    }
   }
 
   .stat-label {

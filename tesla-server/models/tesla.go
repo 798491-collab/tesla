@@ -129,6 +129,7 @@ type TripLog struct {
 	StartCity         string     `gorm:"size:100" json:"start_city"`
 	EndCity           string     `gorm:"size:100" json:"end_city"`
 	AvgConsumption    float64    `json:"avg_consumption"`
+	ElectricityCost   *float64   `json:"electricity_cost"` // 行程电费（元，基于充电价格估算）
 	CreatedAt         time.Time  `json:"created_at"`
 }
 
